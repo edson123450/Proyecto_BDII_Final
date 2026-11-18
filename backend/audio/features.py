@@ -157,10 +157,12 @@ class AudioCodebook:
     def save(self, path):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'wb') as handle:
+        temporary = path.with_suffix(path.suffix + '.temporary')
+        with open(temporary, 'wb') as handle:
             np.savez_compressed(handle, mean=self.mean, std=self.std, centers=self.centers,
                                 training_ids=np.asarray(self.training_ids, np.int64), seed=self.seed,
                                 feature_version=FEATURE_VERSION)
+        temporary.replace(path)
 
     @classmethod
     def load(cls, path):

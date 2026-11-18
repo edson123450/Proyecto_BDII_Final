@@ -9,6 +9,7 @@ import argparse
 import csv
 from datetime import datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import resource
@@ -127,6 +128,22 @@ def build_boaw_cache(records, output_dir, codebook, path):
     return documents
 
 
+def write_boaw_metadata(codebook_path, codebook, document_count, path):
+    """Esta función vincula los conteos BoAW al vocabulario y a sus pistas training."""
+    digest = hashlib.sha256()
+    with open(codebook_path, 'rb') as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    training_bytes = json.dumps(list(codebook.training_ids), separators=(',', ':')).encode('utf-8')
+    metadata = dict(codebook_sha256=digest.hexdigest(), feature_version=FEATURE_VERSION,
+                    document_count=int(document_count), training_count=len(codebook.training_ids),
+                    training_ids_digest=hashlib.sha256(training_bytes).hexdigest(),
+                    training_ids_digest_encoding='UTF-8 compact JSON array of ordered integer IDs',
+                    idf_scope='computed by each InvertedIndex on its own gallery')
+    Path(path).write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    return metadata
+
+
 def prepare(audio_dir, metadata_dir, output_dir='data/cache/audio', limit=100,
             resume=True, device='cpu', batch_size=2, build_codebook=True, threads=2):
     """Esta función mide un piloto o extrae el corpus completo registrando cada fallo."""
@@ -178,6 +195,7 @@ def prepare(audio_dir, metadata_dir, output_dir='data/cache/audio', limit=100,
         codebook = train_codebook(successful, output_dir)
         codebook.save(codebook_path)
         boaw_documents = build_boaw_cache(successful, output_dir, codebook, boaw_path)
+        write_boaw_metadata(codebook_path, codebook, boaw_documents, output_dir / f'boaw_metadata{suffix}.json')
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if sys.platform != 'darwin':
         peak *= 1024

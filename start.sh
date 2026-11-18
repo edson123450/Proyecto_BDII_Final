@@ -4,8 +4,8 @@ cd "$(dirname "$0")"
 if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
-if ! .venv/bin/python -c 'import fastapi,uvicorn,numpy,pandas,matplotlib' >/dev/null 2>&1; then
+if ! .venv/bin/python -c 'import fastapi,uvicorn,numpy,pandas,matplotlib,torch,torchlibrosa,librosa,soundfile,sklearn,nltk,psycopg,numba' >/dev/null 2>&1; then
   .venv/bin/python -m pip install -r requirements.txt
 fi
-.venv/bin/python -m backend.prepare
+.venv/bin/python -m backend.bootstrap
 exec .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port "${PORT:-8014}"

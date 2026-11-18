@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .env
 data/runtime/
+data/runtime_pilot/
 data/cache/
 data/fma_small/
 data/fma_metadata/
