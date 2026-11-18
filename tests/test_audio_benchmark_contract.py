@@ -2,15 +2,23 @@ import unittest
 import json
 from pathlib import Path
 import tempfile
+from unittest.mock import Mock, patch
 
 import numpy as np
 
-from benchmarks.parte2_audio import (assert_no_split_leakage, precision_at,
+from benchmarks.parte2_audio import (AudioBenchmark, assert_no_split_leakage, compare_features, precision_at,
                                      probe_counts, read_timings, recall_at, select_stratified_test)
 from benchmarks.identificacion_audio import crop_audio, identification_score, make_plan, noise_at_snr, relative_audio_path
 
 
 class AudioBenchmarkContractTests(unittest.TestCase):
+    def feature_sample(self):
+        return {"mfcc_descriptors": np.ones((4, 20), np.float32),
+                "sequence": np.ones((1, 13), np.float32),
+                "embedding": np.ones(512, np.float32),
+                "segment_embeddings": np.ones((2, 512), np.float32),
+                "segment_starts": np.array([0, 5], np.float32), "duration": 15.0}
+
     def records(self):
         rows = []
         for genre_number, genre in enumerate(("Rock", "Folk", "Jazz")):
@@ -77,6 +85,47 @@ class AudioBenchmarkContractTests(unittest.TestCase):
             trace = read_timings(path)
         self.assertEqual(trace[7]["run_id"], "full")
         self.assertEqual(trace[7]["embedding_ms"], 140)
+
+    def test_controlled_extraction_must_match_cached_features(self):
+        cached = self.feature_sample()
+        self.assertTrue(all(error == 0 for error in compare_features(cached, cached).values()))
+        changed = {**cached, "embedding": cached["embedding"] + .01}
+        with self.assertRaises(AssertionError):
+            compare_features(changed, cached)
+        with self.assertRaises(AssertionError):
+            compare_features({**cached, "sequence": np.ones((2, 13))}, cached)
+
+    def test_controlled_extraction_excludes_warmup_and_resumes_checkpoints(self):
+        cached = self.feature_sample()
+        observed = {**cached, "timings": {"decode_ms": 2.0, "mfcc_ms": 3.0,
+                                          "embedding_ms": 11.0, "extraction_ms": 14.0, "total_ms": 16.0}}
+        extractor = Mock()
+        extractor.extract.return_value = observed
+        with tempfile.TemporaryDirectory() as directory:
+            bench = AudioBenchmark.__new__(AudioBenchmark)
+            bench.scale, bench.fingerprint = "full", "unit-test"
+            bench.cache, bench.checkpoints = Path(directory) / "private/audio", Path(directory) / "checkpoints"
+            bench.checkpoints.mkdir()
+            bench.queries = [{"id": i, "genre": "Rock", "path": f"/private/source/{i}.mp3"} for i in (7, 8)]
+            bench.timings = {7: {"id": 7, "run_id": "historical", "path": "/private/not-public"}}
+            bench.codebook = Mock()
+            bench.codebook.counts.return_value = {"aw000": 4}
+            bench.log = Mock()
+            bench.verify_sources = Mock()
+            bench.export = Mock()
+            with patch("benchmarks.parte2_audio.AudioExtractor", return_value=extractor) as factory, \
+                    patch("benchmarks.parte2_audio.load_features", return_value=cached):
+                bench.measure_extraction()
+                bench.measure_extraction()
+            factory.assert_called_once_with(cache_dir=bench.cache.parent, device="cpu", batch_size=2, threads=2)
+            self.assertEqual(extractor.extract.call_count, 3)  # warmup + two measured queries
+            self.assertEqual(bench.export.call_count, 2)
+            files = sorted(bench.checkpoints.glob("extraction_*.json"))
+            self.assertEqual(len(files), 2)
+            record = json.loads(files[0].read_text())
+            self.assertEqual(record["timings"]["embedding_ms"], 11.0)
+            self.assertEqual(record["historical_trace"], {"id": 7, "run_id": "historical"})
+            self.assertNotIn("/private/", files[0].read_text())
 
     def test_identification_noise_has_measured_20db_snr(self):
         audio = np.sin(np.arange(16000, dtype=np.float64) * .07).astype(np.float32)

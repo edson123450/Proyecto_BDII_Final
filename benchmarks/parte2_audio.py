@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.audio.features import AudioCodebook, FEATURE_VERSION
+from backend.audio.features import AudioCodebook, AudioExtractor, FEATURE_VERSION
 from backend.audio.prepare import cache_path, load_features, valid_cache
 from backend.minidb.io import DiskCounter
 from backend.minidb.text import InvertedIndex
@@ -42,6 +42,20 @@ EXTRACTION_TRACE_FIELDS = frozenset((
     "id", "status", "mfcc_ms", "embedding_ms", "extraction_ms", "decode_ms", "total_ms",
     "duration", "frames", "segments", "run_id", "device", "threads", "batch_size", "feature_version",
 ))
+
+
+def compare_features(observed, cached):
+    """Equivalencia numérica explícita; nunca sustituye las representaciones guardadas."""
+    tolerances = {"mfcc_descriptors": (1e-5, 1e-5), "sequence": (1e-5, 1e-5),
+                  "embedding": (1e-6, 1e-5), "segment_embeddings": (1e-6, 1e-5),
+                  "segment_starts": (1e-6, 0), "duration": (1e-9, 0)}
+    differences = {}
+    for name, (absolute, relative) in tolerances.items():
+        actual, expected = np.asarray(observed[name]), np.asarray(cached[name])
+        if actual.shape != expected.shape or not np.allclose(actual, expected, atol=absolute, rtol=relative):
+            raise AssertionError(f"La extracción controlada no equivale a la caché: {name}")
+        differences[name] = float(np.max(np.abs(actual.astype(np.float64) - expected.astype(np.float64))))
+    return differences
 
 
 def file_sha256(path):
@@ -225,6 +239,7 @@ class AudioBenchmark:
                        "gallery_ids": [row["id"] for row in self.gallery], "query_ids": [row["id"] for row in self.queries],
                        "codebook_sha256": file_sha256(self.codebook_path), "clusters": math.isqrt(len(self.gallery)),
                        "metadata_sha256": file_sha256(self.cache / "metadata.csv")}
+        self.config["extraction_protocol"] = "isolated_warm_cpu2_batch2" if scale == "full" else "historical_pilot_trace"
         source_names = ("benchmarks/parte2_audio.py", "backend/audio/features.py", "backend/audio/model.py", "backend/audio/prepare.py",
                         "backend/minidb/vector.py", "backend/minidb/text.py", "backend/minidb/io.py")
         self.source_hashes = {name: file_sha256(ROOT / name) for name in source_names}
@@ -332,6 +347,35 @@ class AudioBenchmark:
             raise AssertionError("Una consulta de benchmark no debe modificar archivos")
         return answer, {"latency_ms": elapsed, **self.metrics(counter)}
 
+    def measure_extraction(self):
+        """Reextrae solo consultas full; la preparación masiva ya debe haber terminado."""
+        if self.scale != "full":
+            return
+        if all((self.checkpoints / f"extraction_{row['id']:06d}.json").exists() for row in self.queries):
+            self.log("Extracción controlada: checkpoints completos")
+            return
+        extractor = AudioExtractor(cache_dir=self.cache.parent, device="cpu", batch_size=2, threads=2)
+        self.log("Calentando extractor con una consulta completa, fuera de las mediciones")
+        extractor.extract(self.queries[0]["path"], max_seconds=30)
+        for number, query in enumerate(self.queries, 1):
+            path = self.checkpoints / f"extraction_{query['id']:06d}.json"
+            if path.exists():
+                continue
+            self.log(f"Extracción controlada {number}/{len(self.queries)}: {query['id']}")
+            observed = extractor.extract(query["path"], max_seconds=30)
+            cached = load_features(cache_path(self.cache, query["id"]))
+            differences = compare_features(observed, cached)
+            if self.codebook.counts(observed["mfcc_descriptors"]) != self.codebook.counts(cached["mfcc_descriptors"]):
+                raise AssertionError("La extracción controlada cambia el histograma BoAW")
+            self.verify_sources()
+            historical = {key: value for key, value in self.timings.get(query["id"], {}).items()
+                          if key in EXTRACTION_TRACE_FIELDS}
+            atomic_json(path, {"query_id": query["id"], "genre": query["genre"], "duration": float(observed["duration"]),
+                               "timings": observed["timings"], "device": "cpu", "threads": 2, "batch_size": 2,
+                               "run_id": f"controlled-{self.fingerprint}", "feature_max_abs_errors": differences,
+                               "boaw_counts_equal": True, "historical_trace": historical, "completed_at": utc_now()})
+            self.export()
+
     def experiment7(self):
         if all((self.checkpoints / f"e7_{row['id']:06d}.json").exists() for row in self.queries):
             self.log("E7: checkpoints completos")
@@ -354,7 +398,12 @@ class AudioBenchmark:
                 started = time.perf_counter_ns()
                 counts = self.codebook.counts(features["mfcc_descriptors"])
                 quantization_ms = (time.perf_counter_ns() - started) / 1e6
-                timing = self.timings.get(query["id"], {})
+                historical_timing = self.timings.get(query["id"], {})
+                if self.scale == "full":
+                    controlled = read_json(self.checkpoints / f"extraction_{query['id']:06d}.json")
+                    timing = {**controlled["timings"], **{key: controlled[key] for key in ("run_id", "device", "threads", "batch_size")}}
+                else:
+                    timing = historical_timing
                 rows, exact = [], None
                 methods = ("boaw_tfidf", "deep_exact") if query_number % 2 == 0 else ("deep_exact", "boaw_tfidf")
                 for method in methods:
@@ -375,7 +424,8 @@ class AudioBenchmark:
                                  "precision_at_10": precision_at(ids, query["genre"], self.labels, 10),
                                  **measured, "extraction_ms": extraction_ms,
                                  "quantization_ms": quantization_ms if method == "boaw_tfidf" else 0.0,
-                                 "decode_ms": timing.get("decode_ms"), "extraction_source": "manifest.jsonl" if timing else "unavailable",
+                                 "decode_ms": timing.get("decode_ms"),
+                                 "extraction_source": "controlled_extraction" if self.scale == "full" else ("manifest.jsonl" if timing else "unavailable"),
                                  "extraction_run_id": timing.get("run_id", "pilot_trace" if timing else ""),
                                  "extraction_device": timing.get("device", "cpu (pilot configuration)" if timing else ""),
                                  "extraction_threads": timing.get("threads", 2 if timing else None),
@@ -383,7 +433,9 @@ class AudioBenchmark:
                                  "retrieved_ids": ids})
                 self.verify_sources()
                 public_trace = {key: value for key, value in timing.items() if key in EXTRACTION_TRACE_FIELDS}
-                atomic_json(checkpoint, {"rows": rows, "exact": exact, "extraction_trace": public_trace})
+                historical_trace = {key: value for key, value in historical_timing.items() if key in EXTRACTION_TRACE_FIELDS}
+                atomic_json(checkpoint, {"rows": rows, "exact": exact, "extraction_trace": public_trace,
+                                        "historical_extraction_trace": historical_trace})
                 self.export()
         finally:
             inverted.close()
@@ -441,6 +493,14 @@ class AudioBenchmark:
         e8 = [row for path in sorted(self.checkpoints.glob("e8_*.json")) for row in read_json(path)]
         build_path = self.checkpoints / "build.json"
         builds = read_json(build_path) if build_path.exists() else []
+        extraction_units = [read_json(path) for path in sorted(self.checkpoints.glob("extraction_*.json"))]
+        extraction_rows = [{"query_id": unit["query_id"], "genre": unit["genre"], "duration": unit["duration"],
+                            **unit["timings"], "device": unit["device"], "threads": unit["threads"],
+                            "batch_size": unit["batch_size"], "run_id": unit["run_id"],
+                            "boaw_counts_equal": unit["boaw_counts_equal"],
+                            **{f"{key}_max_abs_error": value for key, value in unit["feature_max_abs_errors"].items()}}
+                           for unit in extraction_units]
+        extraction_complete = self.scale != "full" or len(extraction_units) == len(self.queries)
         expected7 = 2 * len(self.queries)
         expected8 = len(self.queries) * len(probe_counts(self.config["clusters"]))
         e7_complete, e8_complete = len(e7) == expected7, len(e8) == expected8
@@ -456,8 +516,9 @@ class AudioBenchmark:
                     "query_genres": dict(Counter(row["genre"] for row in self.queries)),
                     "shared_artist_ids_gallery_queries": sorted(train_artists & query_artists),
                     "experiments_complete": {"experiment7": e7_complete, "experiment8": e8_complete},
-                    "observations": {"experiment7": len(e7), "experiment8": len(e8)},
-                    "full_requirement_satisfied": self.scale == "full" and e7_complete and e8_complete,
+                    "observations": {"experiment7": len(e7), "experiment8": len(e8), "controlled_extraction": len(extraction_units)},
+                    "controlled_extraction_complete": extraction_complete and self.scale == "full",
+                    "full_requirement_satisfied": self.scale == "full" and e7_complete and e8_complete and extraction_complete,
                     "all_probes_exact": e8_complete and all(row["recall_at_10"] == 1 for row in e8 if row["all_clusters"]),
                     "environment": {"python": sys.version, "platform": platform.platform(), "numpy": np.__version__, "numeric_threads": 2},
                     "methodology": {
@@ -465,13 +526,15 @@ class AudioBenchmark:
                         "semantic_relevance": "Relevancia aproximada por coincidencia de género musical FMA, evaluada con Precision@5 y Precision@10. Esta métrica mide recuperación semántica por género; no demuestra identificación de una grabación ni atribución de derechos de autor.",
                         "query_sampling": "Muestreo determinista equilibrado por género, cuatro consultas por cada uno de los ocho géneros en full por defecto. Full selecciona primero sobre los metadatos completos y comprueba después disponibilidad; las exclusiones del corpus no remuestrean las consultas. Una consulta no utilizable detiene la ejecución y requiere documentar cualquier sustitución. Promedio global equivale a macro-promedio por género. Los vecinos faltantes cuentan como no relevantes.",
                         "representations": "BoAW: MFCC20 sin c0 + normalización aprendida en training + codebook K-Means + histograma TFIDF + coseno en índice invertido propio. Deep: embeddings PANNs CNN6 preentrenado en AudioSet, 512D, promedio normalizado de segmentos de 10s; búsqueda exacta de coseno paginada.",
-                        "extraction": "Consultas semánticas de pista completa (hasta 30 s), idéntico audio en ambos métodos. Tiempos reales por pista del último registro exitoso manifest.jsonl: MFCC y embedding se midieron en la misma corrida y se muestran separados. Proceden de preparación con actividad concurrente de pruebas/interfaz y carga térmica variable, no de microbenchmarks aislados; excluyen descarga y carga inicial del modelo. La traza conserva run_id, dispositivo, threads y batch cuando están disponibles; los primeros registros piloto usaron CPU, dos threads y batch2. Cuantización BoAW se mide nuevamente sobre descriptores reales. Decodificación se informa aparte. Lectura NPZ e inferencia se excluyen de latencia de consulta; no se presenta una suma de fases como medición end-to-end. Las consultas recortadas pertenecen a la evaluación independiente de identificación.",
+                        "extraction": "Full reextrae solo las consultas de pista completa (hasta30s), con CPU2threads/batch2, modelo caliente y sin preparación concurrente. Una extracción completa de calentamiento queda fuera. decode_ms, mfcc_ms y embedding_ms se miden por separado en AudioExtractor; descarga y carga inicial del modelo se excluyen. Formas y valores se comparan con cachés fuera del intervalo: MFCC/secuencia atol1e-5 rtol1e-5; embeddings atol1e-6 rtol1e-5; inicios atol1e-6; duración atol1e-9. Los histogramas BoAW deben coincidir exactamente. Los vectores recuperados siguen siendo los de caché. Cuantización se mide aparte. La traza histórica de preparación concurrente se conserva como procedencia, pero no alimenta los tiempos E7full. Smoke usa esa traza histórica. Las consultas recortadas pertenecen a identificación.",
                         "ivf": "IVF propio paginado entrenado solo en galería; C=floor(sqrt(N)). Probes 1,2,5,10,20,50 y C; valores mayores que C se deduplican en smoke. Recall@10 se calcula contra VectorStore exacto con idénticos vectores normalizados. Con C probes se exige igualdad de IDs y distancias.",
                         "timing": "Consultas con caché de SO caliente y una consulta de calentamiento por índice. En full se ejecutan después de terminar la extracción, sin extracción concurrente. Reloj perf_counter_ns; estadísticas muestrales. Una consulta por pista y configuración; variación refleja consultas distintas. Fases de construcción y extracción se registran separadamente.",
-                        "io": "Transferencias reales de páginas de 4096B solicitadas al gestor, con desglose índice/datos. Vector512D ocupa una entrada por página en este diseño. Los resultados son IDs/similitudes; no se materializan títulos ni otros metadatos durante la medición.",
+                        "io": "Transferencias reales de páginas de4096B solicitadas al gestor, con desglose índice/datos. Vector512D ocupa una entrada por página. E7/E8 aíslan recuperación de IDs/similitudes, usando referencias estables(id_pista,0), sin materializar metadatos del Heap. La aplicación e identificación usan RID físicos reales y contabilizan su materialización.",
                         "scope": "Smoke usa únicamente pistas reales disponibles del piloto y no satisface los requisitos masivos. Full exige preparación completa de las 8000 pistas originales; archivos no decodificables se excluyen explícitamente, sin sustituirlos por muestras sintéticas.",
                         "checkpoints": "Resultados atómicos por consulta y fingerprint de código, vocabulario, galería y cachés. No se extrapolan ni rellenan resultados faltantes."}}
-        result = {"manifest": manifest, "builds": builds, "experiment7_queries": e7, "experiment7_summary": summarize_e7(e7),
+        result = {"manifest": manifest, "builds": builds, "extraction_queries": extraction_rows,
+                  "extraction_history": [{"query_id": unit["query_id"], **unit["historical_trace"]} for unit in extraction_units],
+                  "experiment7_queries": e7, "experiment7_summary": summarize_e7(e7),
                   "experiment8_queries": e8, "experiment8_summary": summarize_e8(e8)}
         for name, rows in result.items():
             if name != "manifest":
@@ -530,7 +593,8 @@ def make_plots(output, result):
                 ax.bar(i, quantization, bottom=extraction, color="#DDCC77", label="Cuantización" if i == 0 else None)
         ax.set(xticks=xs, xticklabels=["MFCC + cuantización" if m == "boaw_tfidf" else "Embedding PANNs" for m in methods], ylabel="Tiempo medio por consulta (ms)", title="E7 · Coste de representación, separado de búsqueda" + suffix)
         ax.legend()
-        fig.supxlabel("Extracción: registros reales de preparación por pista. Cuantización: medida nuevamente sobre MFCC almacenados.", fontsize=8)
+        label = "Extracción controlada: CPU 2 threads · batch 2 · modelo caliente" if result["manifest"]["config"]["scale"] == "full" else "Extracción: registros históricos del piloto"
+        fig.supxlabel(label + " · cuantización medida aparte", fontsize=8)
         fig.savefig(output / "experiment7_extraction.png", dpi=180, bbox_inches="tight")
         plt.close(fig)
     e8 = result["experiment8_summary"]
@@ -566,6 +630,7 @@ def main(argv=None):
     with threadpool_limits(limits=2):
         bench = AudioBenchmark(args.scale, args.cache, output, args.queries_per_genre, args.codebook)
         try:
+            bench.measure_extraction()
             bench.experiment7()
             bench.experiment8()
         finally:
