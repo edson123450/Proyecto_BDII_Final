@@ -70,6 +70,16 @@ El Sequential mantiene un área principal ordenada y un overflow enlazado. Los e
 
 La documentación interactiva de la API está en `/docs`. El servidor se inicia en la interfaz local del equipo.
 
+## Índices espaciales y vectoriales
+
+La segunda entrega añade `backend/minidb/spatial.py` (R-Tree con búsqueda por ventana, radio y k-NN), `vector.py` (recorrido exacto por rango/k-NN e IVF) y `blob.py` (objetos variables encadenados en páginas).
+
+IVF usa `floor(sqrt(N))` centroides y almacena su directorio y listas en páginas de 4 KB. El parámetro `probes` determina cuántas listas se exploran. Los centroides se ajustan con MiniBatch K-Means; las estructuras de búsqueda, su persistencia y el recorrido están implementados en el proyecto. Explorar todos los centroides reproduce los vecinos de la búsqueda exacta, incluyendo el desempate por RID.
+
+```bash
+.venv/bin/python -m pytest -q tests/test_spatial.py tests/test_vector.py tests/test_blob.py
+```
+
 ## Referencias de implementación
 
 Las estructuras de almacenamiento y los índices están implementados en Python usando `seek`, lecturas de tamaño fijo y `struct`; no utilizan otro motor de bases de datos ni una librería de índices. FastAPI se utiliza para la API y NumPy/Matplotlib para generar y analizar los experimentos.
