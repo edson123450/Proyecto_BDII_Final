@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
 from pathlib import Path
 from time import perf_counter
 
@@ -29,7 +30,11 @@ def flat_and(condition):
     if condition is None:
         return []
     if condition[0] == 'OR':
-        raise ValueError('Combinar predicados multimodales con AND; usar OR dentro de MATCH.')
+        def special(node):
+            return (special(node[1]) or special(node[2])) if node[0] in ('AND', 'OR') else node[0] in {'MATCH', 'WITHIN_RADIUS', 'WITHIN_WINDOW', 'KNN'}
+        if special(condition):
+            raise ValueError('Combinar predicados multimodales con AND; usar OR dentro de MATCH.')
+        return [condition]
     return flat_and(condition[1]) + flat_and(condition[2]) if condition[0] == 'AND' else [condition]
 
 
@@ -39,33 +44,73 @@ class MultimodalDatabase(Database):
         self.probes = 5
         self.mm = {}
         self.resources = {}
-        for table, meta in self.catalog.items():
-            if 'multimodal' in meta:
-                self._open_multimodal(table)
+        try:
+            for table, meta in self.catalog.items():
+                if 'multimodal' in meta:
+                    self._open_multimodal(table)
+        except Exception:
+            self.close()
+            raise
 
     def _open_multimodal(self, table):
         meta = self.catalog[table]['multimodal']
         opened = {}
-        if 'blobs' in meta:
-            opened['blobs'] = BlobStore(self.directory / meta['blobs'], self.counter, self.page_size)
-        if 'vectors' in meta:
-            opened['vectors'] = VectorStore(self.directory / meta['vectors'], counter=self.counter)
+        try:
+            for key in ('blobs', 'vectors'):
+                if key in meta and not (self.directory / meta[key]).is_file():
+                    raise ValueError(f'Falta el archivo {key} de la colección {table}.')
+            if 'blobs' in meta:
+                opened['blobs'] = BlobStore(self.directory / meta['blobs'], self.counter, self.page_size)
+            if 'vectors' in meta:
+                opened['vectors'] = VectorStore(self.directory / meta['vectors'], counter=self.counter, page_size=self.page_size)
+        except Exception:
+            for resource in opened.values():
+                resource.close()
+            raise
         self.resources[table] = opened
         for spec in meta.get('indexes', []):
             self.mm[spec['name']] = self._mm_instance(spec)
 
     def _mm_instance(self, spec):
         path = self.directory / spec['path']
+        required = {'RTREE': [path], 'INVERTED': [path / name for name in ('vocab.dic', 'postings.inv', 'norms.bin')],
+                    'IVF': [path / name for name in ('centroids.dir', 'lists.ivf')]}
+        if spec['kind'] not in required or any(not file.is_file() or file.stat().st_size == 0 for file in required[spec['kind']]):
+            raise ValueError(f'Faltan archivos del índice {spec["name"]}; no se abrirá como un índice vacío.')
         if spec['kind'] == 'RTREE':
-            return RTree(path, counter=self.counter)
+            return RTree(path, counter=self.counter, page_size=self.page_size)
         if spec['kind'] == 'INVERTED':
-            return InvertedIndex(path, counter=self.counter)
-        return IVFIndex(path, counter=self.counter)
+            return InvertedIndex(path, counter=self.counter, page_size=self.page_size)
+        return IVFIndex(path, counter=self.counter, page_size=self.page_size)
 
     def register(self, table, **metadata):
+        self._require_table(table)
+        if 'multimodal' in self.catalog[table]:
+            raise ValueError('La colección ya tiene representaciones registradas.')
         self.catalog[table]['multimodal'] = dict(indexes=[], **metadata)
-        self._save_catalog()
-        self._open_multimodal(table)
+        try:
+            self._open_multimodal(table)
+            self._save_catalog()
+        except Exception:
+            for resource in self.resources.pop(table, {}).values():
+                resource.close()
+            self.catalog[table].pop('multimodal', None)
+            raise
+
+    def create_index(self, table, name, column, kind):
+        if name in getattr(self, 'mm', {}):
+            raise ValueError(f'El índice {name} ya existe.')
+        return super().create_index(table, name, column, kind)
+
+    def insert(self, table, row, check_primary=True):
+        if 'multimodal' in self.catalog.get(table, {}):
+            raise ValueError('Las colecciones se preparan conjuntamente para mantener sus representaciones sincronizadas.')
+        return super().insert(table, row, check_primary)
+
+    def reorganize(self, table):
+        if 'multimodal' in self.catalog.get(table, {}):
+            raise ValueError('La reorganización de una colección multimodal requiere reconstruir todas sus representaciones.')
+        return super().reorganize(table)
 
     def _index(self, table, kind):
         specs = self.catalog[table].get('multimodal', {}).get('indexes', [])
@@ -85,27 +130,52 @@ class MultimodalDatabase(Database):
         if kind == 'INVERTED' and options.get('scoring', 'TFIDF_COSINE').upper() != 'TFIDF_COSINE':
             raise ValueError('El índice invertido implementa TFIDF_COSINE.')
         path = self.directory / name
+        temporary = self.directory / (name + '.building')
         spec = dict(name=name, column=column, kind=kind, path=name, options=options)
-        if kind == 'RTREE':
-            index = RTree(path, counter=self.counter, create=True)
-            for rid, row in self.tables[table].scan():
-                index.insert(project((row['lon'], row['lat'])), rid)
-        elif kind == 'INVERTED':
-            index = InvertedIndex(path, counter=self.counter, create=True)
-            blobs = self.resources[table]['blobs']
-            index.build_tokens((row['id'], index.tokenize(blobs.read(row['cuerpo_ptr']).decode('utf-8')))
-                        for _, row in self.tables[table].scan())
-        elif kind == 'IVF':
-            store = self.resources[table]['vectors']
-            if options.get('metric', store.metric).upper() != store.metric:
-                raise ValueError(f'Los vectores de esta colección usan {store.metric}.')
-            index = IVFIndex(path, counter=self.counter)
-            index.build(store, clusters=options.get('lists'))
-        else:
-            raise ValueError('Índice multimodal desconocido.')
-        self.mm[name] = index
-        meta['indexes'].append(spec)
-        self._save_catalog()
+        if path.exists():
+            raise ValueError('La ruta del índice ya existe; elegir otro nombre.')
+        def remove(target):
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink(missing_ok=True)
+        remove(temporary)
+        index, published = None, False
+        try:
+            if kind == 'RTREE':
+                index = RTree(temporary, counter=self.counter, page_size=self.page_size, create=True)
+                for rid, row in self.tables[table].scan():
+                    index.insert(project((row['lon'], row['lat'])), rid)
+            elif kind == 'INVERTED':
+                index = InvertedIndex(temporary, counter=self.counter, page_size=self.page_size, create=True)
+                blobs = self.resources[table]['blobs']
+                index.build_tokens((row['id'], index.tokenize(blobs.read(row['cuerpo_ptr']).decode('utf-8')))
+                            for _, row in self.tables[table].scan())
+            elif kind == 'IVF':
+                store = self.resources[table]['vectors']
+                if options.get('metric', store.metric).upper() != store.metric:
+                    raise ValueError(f'Los vectores de esta colección usan {store.metric}.')
+                index = IVFIndex(temporary, counter=self.counter, page_size=self.page_size)
+                index.build(store, clusters=options.get('lists'))
+            else:
+                raise ValueError('Índice multimodal desconocido.')
+            index.close()
+            temporary.replace(path)
+            published = True
+            index = self._mm_instance(spec)
+            self.mm[name] = index
+            meta['indexes'].append(spec)
+            self._save_catalog()
+        except Exception:
+            if index is not None:
+                index.close()
+            self.mm.pop(name, None)
+            if spec in meta.get('indexes', []):
+                meta['indexes'].remove(spec)
+            remove(temporary)
+            if published:
+                remove(path)
+            raise
 
     def get_by_id(self, table, identifier):
         candidates, _ = self._candidates(table, ('=', 'id', int(identifier)))
@@ -122,14 +192,17 @@ class MultimodalDatabase(Database):
             return np.frombuffer(self.resources[table]['blobs'].read(row['embedding_ptr']), dtype='<f4').tolist()
         raise ValueError(f'La columna {column} no existe.')
 
-    def _finish(self, rows, plan, parse_ms, started, page, page_size, message=None):
-        total = len(rows)
-        return dict(message=message or f'{total} registros encontrados.', rows=rows[(page-1)*page_size:page*page_size],
+    def _finish(self, rows, plan, parse_ms, started, page, page_size, message=None, total=None, paginated=False):
+        total = len(rows) if total is None else total
+        return dict(message=message or f'{total} registros encontrados.', rows=rows if paginated else rows[(page-1)*page_size:page*page_size],
                     total=total, affected=0, page=page, page_size=page_size, plan=plan,
                     metrics={**self.counter.snapshot(), 'parse_ms': parse_ms, 'execution_ms': (perf_counter()-started)*1000})
 
     def execute(self, sql, page=1, page_size=25):
         from .sql_multimodal import parse_multimodal_sql
+        if (isinstance(page, bool) or not isinstance(page, int) or page < 1
+                or isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1):
+            raise ValueError('La página y su tamaño deben ser enteros positivos.')
         start = perf_counter()
         ast = parse_multimodal_sql(sql)
         parse_ms = (perf_counter()-start)*1000
@@ -164,7 +237,7 @@ class MultimodalDatabase(Database):
         columns = ast['columns']
         meta = self.catalog[table]['multimodal']
         virtuals = meta['virtual_columns']
-        physical = {c['name'] for c in self.catalog[table]['columns']}
+        physical = [c['name'] for c in self.catalog[table]['columns']]
         predicates = flat_and(ast['where'])
         special_ops = {'MATCH', 'WITHIN_RADIUS', 'WITHIN_WINDOW', 'KNN'}
         special = [p for p in predicates if p[0] in special_ops]
@@ -176,6 +249,8 @@ class MultimodalDatabase(Database):
                 raise ValueError(f'La columna {column} no existe.')
         distance = next((c for c in columns if isinstance(c, dict) and c['kind'] == 'distance'), None)
         score = next((c for c in columns if isinstance(c, dict) and c['kind'] == 'cosine_score'), None)
+        if sum(isinstance(c, dict) and c['kind'] == 'distance' for c in columns) > 1 or (distance and score):
+            raise ValueError('Usar una sola expresión de distancia por consulta, sin COSINE_SCORE adicional.')
         if len(special) > 1 or (special and distance):
             raise ValueError('Usar una búsqueda multimodal por consulta, combinada con filtros relacionales mediante AND.')
         if score and not any(p[0] == 'MATCH' for p in special):
@@ -183,10 +258,12 @@ class MultimodalDatabase(Database):
         condition = None
         for predicate in regular:
             condition = predicate if condition is None else ('AND', condition, predicate)
-        allowed, filter_plan = None, None
+        allowed, allowed_ids, filter_plan = None, None, None
         if condition is not None:
             candidates, filter_plan = self._candidates(table, condition)
-            allowed = {rid for rid, row in candidates if matches(row, condition)}
+            matching = [(rid, row) for rid, row in candidates if matches(row, condition)]
+            allowed = {rid for rid, _ in matching}
+            allowed_ids = {row['id'] for _, row in matching}
         ranked = None
         plan = dict(operation='SeqScan', index=None, reason='Lectura de la colección')
         if distance:
@@ -201,9 +278,9 @@ class MultimodalDatabase(Database):
                 raise ValueError('La búsqueda vectorial requiere LIMIT k.')
             index, spec = self._index(table, 'IVF')
             k = ast['limit']
-            ranked = index.knn(distance['vector'], k, self.probes, allowed_rids=allowed) if index else store.knn(distance['vector'], k, allowed_rids=allowed)
+            ranked = [] if k == 0 else index.knn(distance['vector'], k, self.probes, allowed_rids=allowed) if index else store.knn(distance['vector'], k, allowed_rids=allowed)
             plan = dict(operation='IVFScan' if index else 'VectorScan', index=spec['name'] if spec else None,
-                        reason=f'Coseno; probes={min(self.probes, index.clusters)}' if index else 'kNN exacto con max-heap')
+                        reason=f'{store.metric}; probes={min(self.probes, index.clusters)}' if index else 'kNN exacto con max-heap')
         elif special:
             op, column, value = special[0]
             if op == 'MATCH':
@@ -212,14 +289,20 @@ class MultimodalDatabase(Database):
                 index, spec = self._index(table, 'INVERTED')
                 if index is None:
                     raise ValueError('Crear primero un índice INVERTED.')
-                boolean = bool(re.search(r'\b(?:AND|OR|NOT)\b', value))
+                boolean = bool(re.search(r'\b(?:AND|OR|NOT)\b', value, flags=re.I))
                 if boolean:
                     ids = set(index.boolean(value))
-                    terms = ' '.join(t for t in re.split(r'\b(?:AND|OR|NOT)\b|[()]', value) if t.strip())
+                    terms = ' '.join(t for t in re.split(r'\b(?:AND|OR|NOT)\b|[()]', value, flags=re.I) if t.strip())
                     scores = dict(index.query(terms, k=index.document_count)) if score else {}
                     found = [(i, scores.get(i, 0.0)) for i in ids]
                 else:
                     found = index.query(value, k=index.document_count)
+                if allowed_ids is not None:
+                    found = [(docid, similarity) for docid, similarity in found if docid in allowed_ids]
+                if ast['order'] is None or (score and ast['order'] == (score['alias'], True)):
+                    found.sort(key=lambda item: (-item[1], item[0]))
+                    if ast['limit'] is not None:
+                        found = found[:ast['limit']]
                 ranked = []
                 for docid, similarity in found:
                     item = self.get_by_id(table, docid)
@@ -248,15 +331,29 @@ class MultimodalDatabase(Database):
             plan['strategy'] = 'Pre-filtering mediante ' + filter_plan['operation']
             plan['filter'] = filter_plan
         if ranked is None:
-            selected = ((rid, row, None) for rid, row in self.tables[table].scan() if allowed is None or rid in allowed)
+            selected = [(rid, row, None) for rid, row in self.tables[table].scan() if allowed is None or rid in allowed]
         else:
-            selected = ((rid, self.tables[table].get(rid), metric) for rid, metric in ranked if allowed is None or rid in allowed)
+            selected = [(rid, None, metric) for rid, metric in ranked if allowed is None or rid in allowed]
         if columns == ['*']:
             columns = [c for c in physical if not c.endswith('_ptr')] + [c for c in virtuals if c != 'embedding']
         if any(isinstance(c, str) and c not in physical and c not in virtuals for c in columns):
             raise ValueError('La proyección contiene columnas inexistentes.')
+        if ast['order']:
+            key, reverse = ast['order']
+            if key not in {c if isinstance(c, str) else c['alias'] for c in columns}:
+                raise ValueError('ORDER BY debe referirse a una columna seleccionada.')
+            if any(isinstance(c, dict) and c['alias'] == key for c in columns):
+                selected.sort(key=lambda item: item[2], reverse=reverse)
+            else:
+                selected = [(rid, row if row is not None else self.tables[table].get(rid), metric) for rid, row, metric in selected]
+                selected.sort(key=lambda item: self.value(table, item[1], key), reverse=reverse)
+        if ast['limit'] is not None:
+            selected = selected[:ast['limit']]
+        total = len(selected)
+        selected = selected[(page-1)*page_size:page*page_size]
         rows = []
         for rid, row, metric in selected:
+            row = self.tables[table].get(rid) if row is None else row
             result = {}
             for column in columns:
                 if isinstance(column, dict):
@@ -264,14 +361,7 @@ class MultimodalDatabase(Database):
                 else:
                     result[column] = self.value(table, row, column)
             rows.append(result)
-        if ast['order']:
-            key, reverse = ast['order']
-            if key not in {c if isinstance(c, str) else c['alias'] for c in columns}:
-                raise ValueError('ORDER BY debe referirse a una columna seleccionada.')
-            rows.sort(key=lambda r: r[key], reverse=reverse)
-        if ast['limit'] is not None:
-            rows = rows[:ast['limit']]
-        return self._finish(rows, plan, parse_ms, started, page, page_size)
+        return self._finish(rows, plan, parse_ms, started, page, page_size, total=total, paginated=True)
 
     def describe(self):
         descriptions = super().describe()

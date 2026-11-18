@@ -17,7 +17,7 @@ def main():
             from .audio.prepare import prepare as extract
             print('Primera preparación: extraer 8000 pistas puede tardar una hora o más. El proceso es reanudable.',flush=True)
             extract(AUDIO_DIR,METADATA_DIR,AUDIO_CACHE,limit=None,resume=True,device='cpu',batch_size=2)
-            prepare_audio(db,AUDIO_CACHE)
+        prepare_audio(db,AUDIO_CACHE)
         print('SonoraDB está preparado. Abrir http://127.0.0.1:8014',flush=True)
     finally:
         db.close()

@@ -20,6 +20,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from backend.config import METADATA_DIR
 from backend.minidb.io import DiskCounter, DiskFile
 from backend.minidb.text import InvertedIndex, TextNormalizer
 
@@ -251,14 +252,14 @@ def plots(output, construction, summary):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--metadata',type=Path,default=None)
+    parser.add_argument('--metadata',type=Path,default=METADATA_DIR/'tracks.csv')
     parser.add_argument('--output',type=Path,default=ROOT/'benchmarks/results/parte2_texto')
     parser.add_argument('--workdir',type=Path,default=ROOT/'data/runtime/e6')
     parser.add_argument('--sizes',type=int,nargs='+',default=[1000,5000,10000,20000])
     parser.add_argument('--repeats',type=int,default=5)
     parser.add_argument('--dsn',default=os.environ.get('SONORADB_PG_DSN','host=localhost port=5432 user=postgres dbname=postgres'))
     args=parser.parse_args()
-    metadata=args.metadata or Path(os.environ.get('FMA_METADATA_DIR',''))/'tracks.csv'
+    metadata=args.metadata
     if not metadata.exists():
         parser.error('Configurar --metadata tracks.csv o FMA_METADATA_DIR')
     args.output.mkdir(parents=True,exist_ok=True);args.workdir.mkdir(parents=True,exist_ok=True)

@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SonoraDB · Consola</title>
+    <title>SonoraDB · Explorar y encontrar</title>
+    <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" />
     <link rel="stylesheet" href="/assets/styles.css" />
   </head>
   <body>
@@ -19,8 +20,8 @@
       <div class="page-heading">
         <div>
           <p class="eyebrow">EXPLORAR · CONSULTAR · MEDIR</p>
-          <h1>Los datos, desde adentro.</h1>
-          <p>
+          <h1 id="view-title">Los datos, desde adentro.</h1>
+          <p id="view-description">
             Ejecutar SQL y observar cómo trabaja el motor sobre sus páginas.
           </p>
         </div>
@@ -28,6 +29,14 @@
           Ver experimentos ↗
         </button>
       </div>
+      <nav class="view-nav" aria-label="Explorar el gestor">
+        <button class="nav-tab active" data-view="sql" aria-current="page"><span>⌘</span> Consola SQL</button>
+        <button class="nav-tab" data-view="map"><span>◎</span> Mapa</button>
+        <button class="nav-tab" data-view="text"><span>≡</span> Texto</button>
+        <button class="nav-tab" data-view="audio"><span>♫</span> Audio</button>
+        <button class="nav-tab" data-view="experiments"><span>↗</span> Experimentos</button>
+      </nav>
+      <section id="view-sql" class="view-panel" aria-label="Consola SQL">
       <div class="workspace">
         <aside class="panel explorer">
           <div class="panel-title">
@@ -53,6 +62,8 @@
                   <option value="equal">Búsqueda puntual</option>
                   <option value="hash">Igualdad con hash</option>
                   <option value="scan">Escaneo secuencial</option>
+                  <option value="spatial">Cercanía en el mapa</option>
+                  <option value="text">Relevancia textual</option>
                   <option value="create">Crear tabla</option>
                   <option value="insert">Insertar registro</option>
                 </select></label
@@ -107,6 +118,8 @@ WHERE id &gt;= 100 AND id &lt;= 150;</textarea
               El planificador elige según el filtro y los índices disponibles.
             </p>
             <code id="plan-index"></code>
+            <p id="plan-strategy" hidden></p>
+            <details id="plan-details" class="plan-details" hidden><summary>Detalles del plan</summary><pre id="plan-json"></pre></details>
           </div>
           <div class="metric">
             <span>Lecturas de disco</span><strong id="reads">—</strong>
@@ -127,7 +140,69 @@ WHERE id &gt;= 100 AND id &lt;= 150;</textarea
           </p>
         </aside>
       </div>
-      <section id="benchmark-panel" class="panel benchmark-panel" hidden>
+      </section>
+      <section id="view-map" class="view-panel" aria-label="Búsqueda espacial" hidden>
+        <div class="module-grid">
+          <aside class="panel controls-panel">
+            <div class="panel-title"><h2>01 <span>Definir la búsqueda</span></h2></div>
+            <form id="map-form" class="form-body">
+              <p class="form-hint">Selecciona un punto en el mapa o escribe sus coordenadas.</p>
+              <label>Tipo de búsqueda<select id="map-mode"><option value="radius">Dentro de un radio</option><option value="knn">Los más cercanos</option><option value="window">Dentro de un área</option></select></label>
+              <div class="form-pair"><label>Longitud<input id="map-lon" type="number" step="any" min="-180" max="180" value="-77.04" required></label><label>Latitud<input id="map-lat" type="number" step="any" min="-90" max="90" value="-12.05" required></label></div>
+              <label id="radius-field">Radio (km)<input id="map-radius" type="number" min="0.1" step="0.1" value="2.5" required></label>
+              <label id="map-k-field" hidden>Resultados<select id="map-k"><option>5</option><option selected>20</option><option>50</option></select></label>
+              <label id="width-field" hidden>Ancho del área (km)<input id="map-width" type="number" min="0.1" step="0.1" value="5" required></label>
+              <button class="primary wide" id="map-submit" type="submit">Buscar lugares</button>
+              <button class="secondary wide" id="map-show-sql" type="button" disabled>Ver consulta SQL</button>
+            </form>
+            <div class="panel-footnote">100 000 puntos simulados en Lima. Elige otra zona para comparar resultados.</div>
+          </aside>
+          <div class="module-main">
+            <div class="panel"><div class="panel-title"><h2>02 <span>Explorar el mapa</span></h2><span id="map-count" class="badge">Seleccionar un punto</span></div><div id="spatial-map" aria-label="Mapa interactivo de Lima"></div><div id="map-status" class="status-message" role="status">El círculo indica el área de búsqueda.</div></div>
+            <div class="panel"><div class="panel-title"><h2>03 <span>Lugares encontrados</span></h2></div><div id="map-results" class="results compact-results"><div class="empty"><p>Los lugares aparecerán al realizar una búsqueda.</p></div></div></div>
+          </div>
+          <aside id="map-metrics" class="panel module-metrics" aria-label="Plan espacial y métricas"></aside>
+        </div>
+      </section>
+      <section id="view-text" class="view-panel" aria-label="Búsqueda de texto" hidden>
+        <div class="text-layout">
+          <div class="module-main">
+            <div class="panel search-panel"><div class="panel-title"><h2>01 <span>Buscar en los documentos</span></h2><span class="badge">Metadatos musicales</span></div>
+              <form id="text-form" class="text-search-form"><label class="sr-only" for="text-query">Palabras de búsqueda</label><input id="text-query" placeholder="Por ejemplo: jazz AND guitar" value="jazz AND guitar" required><label class="sr-only" for="text-k">Cantidad de resultados</label><select id="text-k"><option value="5">Top 5</option><option value="10" selected>Top 10</option><option value="20">Top 20</option></select><button class="primary" id="text-submit" type="submit">Buscar texto</button></form>
+              <div class="query-suggestions"><span>Probar:</span><button data-text-query="rock">rock</button><button data-text-query="jazz AND piano">jazz AND piano</button><button data-text-query="electronic OR ambient">electronic OR ambient</button></div>
+              <div class="panel-footnote">Combina palabras con AND, OR y AND NOT. Los resultados se ordenan por relevancia.</div>
+            </div>
+            <div class="panel"><div class="panel-title"><h2>02 <span>Resultados por relevancia</span></h2><button class="secondary" id="text-show-sql" disabled>Ver consulta SQL</button></div><div id="text-status" class="status-message" role="status">Busca en títulos, artistas, géneros y descripciones.</div><div id="text-results" class="document-list"><div class="empty"><span>≡</span><p>Una búsqueda puede conectar varias palabras.</p></div></div></div>
+          </div>
+          <aside id="text-metrics" class="panel module-metrics" aria-label="Plan textual y métricas"></aside>
+        </div>
+      </section>
+      <section id="view-audio" class="view-panel" aria-label="Identificación de audio" hidden>
+        <div class="audio-layout">
+          <aside class="panel controls-panel audio-controls"><div class="panel-title"><h2>01 <span>Elegir un fragmento</span></h2><button id="audio-refresh" class="icon" aria-label="Actualizar colección de audio">↻</button></div>
+            <div id="audio-info" class="audio-collection" role="status">Consultando la colección…</div>
+            <form id="audio-form" class="form-body">
+              <label>Origen<select id="audio-source"><option value="catalog">Pista del catálogo</option><option value="upload">Subir un archivo</option></select></label>
+              <label id="track-field">Pista<select id="audio-track"><option value="">Cargando catálogo…</option></select></label>
+              <label id="upload-field" class="file-field" hidden>Archivo de audio<input id="audio-file" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a"><span>MP3, WAV, FLAC u otro formato compatible.</span></label>
+              <audio id="audio-source-player" class="source-player" controls preload="none" hidden aria-label="Escuchar pista elegida"></audio>
+              <div class="form-pair"><label>Inicio (segundos)<input id="audio-start" type="number" min="0" step="0.5" value="0" required></label><label>Duración<select id="audio-duration"><option value="5">5 segundos</option><option value="10" selected>10 segundos</option></select></label></div>
+              <label>Ruido de prueba<select id="audio-noise"><option value="">Sin ruido añadido</option><option value="20">Añadir ruido · SNR 20 dB</option></select></label>
+              <div class="form-pair"><label>Resultados<select id="audio-k"><option value="5">Top 5</option><option value="10">Top 10</option></select></label><label>Exploración IVF<select id="audio-probes"><option>1</option><option>2</option><option selected>5</option><option>10</option><option>20</option><option>50</option></select></label></div>
+              <label class="checkbox-label"><input id="audio-dtw" type="checkbox" checked><span>Incluir alineamiento temporal DTW</span></label>
+              <button class="primary wide" type="submit" id="audio-submit" disabled>Comparar fragmento</button>
+              <button class="ghost wide" type="button" id="audio-show-sql" disabled>Ver consulta vectorial</button>
+            </form>
+          </aside>
+          <div class="module-main">
+            <div class="panel audio-query-panel"><div class="panel-title"><h2>02 <span>Escuchar y comparar</span></h2><span id="audio-corpus-count" class="badge">Colección local</span></div><div id="audio-status" class="status-message" role="status">Selecciona una pista o sube un fragmento para buscar coincidencias.</div><div id="audio-query-summary" class="audio-query-summary" hidden><div><strong>Fragmento consultado</strong><p id="audio-query-description"></p></div><audio id="audio-query-player" controls preload="none" aria-label="Escuchar fragmento consultado"></audio></div><div id="audio-extraction" class="extraction-summary"></div></div>
+            <div id="audio-methods" class="audio-methods"><div class="panel audio-empty"><div class="empty"><span>♫</span><p>El mismo fragmento, distintas formas de reconocerlo.</p><small>Compara palabras acústicas, vectores y alineamiento temporal.</small></div></div></div>
+            <div id="audio-scope" class="scope-note" hidden></div>
+          </div>
+        </div>
+      </section>
+      <section id="view-experiments" class="view-panel" aria-label="Experimentos" hidden>
+      <section id="benchmark-panel" class="panel benchmark-panel">
         <div class="panel-title">
           <h2>Experimentos <span>Resultados medidos</span></h2>
           <button
@@ -140,6 +215,7 @@ WHERE id &gt;= 100 AND id &lt;= 150;</textarea
         </div>
         <div id="benchmark-images"></div>
       </section>
+      </section>
     </main>
     <footer>
       SonoraDB
@@ -147,6 +223,7 @@ WHERE id &gt;= 100 AND id &lt;= 150;</textarea
         >Almacenamiento propio · Índices persistentes · Mediciones reales</span
       >
     </footer>
+    <script src="/assets/vendor/leaflet/leaflet.js"></script>
     <script src="/assets/app.js"></script>
   </body>
 </html>

@@ -26,6 +26,18 @@ def clipped(text, maximum):
     return str(text).encode('utf-8')[:maximum].decode('utf-8', errors='ignore')
 
 
+def prepared_collection(db, table, count, kinds):
+    """Esta función distingue una colección completa de una carga interrumpida."""
+    if table not in db.catalog:
+        return False
+    meta=db.catalog[table].get('multimodal',{})
+    complete=(db.tables[table].record_count==count and bool(meta)
+              and all(db._index(table,kind)[0] is not None for kind in kinds))
+    if not complete:
+        raise ValueError(f'La colección {table} está incompleta o tiene otro tamaño. Conservar sus archivos y preparar una carpeta de datos nueva.')
+    return True
+
+
 def text_documents(metadata_dir, limit=20000):
     """Esta función reúne texto original de títulos, biografías y descripciones de FMA."""
     with (Path(metadata_dir) / 'tracks.csv').open(encoding='utf-8', newline='') as stream:
@@ -45,7 +57,9 @@ def text_documents(metadata_dir, limit=20000):
 
 
 def prepare_space(db, count=100000):
-    if 'locales' in db.catalog:
+    if isinstance(count,bool) or not isinstance(count,int) or count<1:
+        raise ValueError('La cantidad de puntos debe ser un entero positivo.')
+    if prepared_collection(db,'locales',count,('RTREE',)):
         return
     db.create_table('locales', [column('id', primary=True), column('nombre','CHAR',64), column('lon','FLOAT'), column('lat','FLOAT')])
     rng = np.random.default_rng(42)
@@ -60,15 +74,19 @@ def prepare_space(db, count=100000):
 
 
 def prepare_text(db, metadata_dir, count=20000):
-    if 'documentos' in db.catalog:
+    if isinstance(count,bool) or not isinstance(count,int) or count<1:
+        raise ValueError('La cantidad de documentos debe ser un entero positivo.')
+    if prepared_collection(db,'documentos',count,('INVERTED',)):
         return
     db.create_table('documentos',[column('id',primary=True),column('titulo','CHAR',512),column('cuerpo_ptr')])
-    with_blob = BlobStore(db.directory/'documentos.blob',db.counter)
+    with_blob = BlobStore(db.directory/'documentos.blob',db.counter,db.page_size)
     try:
         for docid, title, body in text_documents(metadata_dir, count):
             db.tables['documentos'].insert(dict(id=docid,titulo=clipped(title,512),cuerpo_ptr=with_blob.append(body.encode('utf-8'))))
     finally:
         with_blob.close()
+    if db.tables['documentos'].record_count!=count:
+        raise ValueError('Los metadatos contienen menos documentos que los solicitados; la colección no se publicará como preparada.')
     db.create_index('documentos','idx_doc_id','id','BTREE')
     db.register('documentos',virtual_columns={'cuerpo':'TEXT'},blobs='documentos.blob',source='Metadatos FMA, no audio adicional')
     db.create_multimodal_index('documentos','idx_texto','cuerpo','INVERTED')
@@ -77,27 +95,37 @@ def prepare_text(db, metadata_dir, count=20000):
 
 def prepare_audio(db, cache_dir, limit=None, pilot=False):
     from .audio.features import AudioCodebook
-    from .audio.prepare import load_features, cache_path
+    from .audio.prepare import load_features, cache_path, valid_cache
     cache_dir = Path(cache_dir)
     codebook_path = cache_dir / ('codebook.pilot.npz' if pilot else 'codebook.npz')
     if not codebook_path.exists():
         raise ValueError(f'Completar antes la extracción y el vocabulario acústico: {codebook_path.name}')
-    if 'pistas' in db.catalog:
-        return
+    if limit is not None and (isinstance(limit,bool) or not isinstance(limit,int) or limit<1):
+        raise ValueError('El límite de audio debe ser un entero positivo.')
     with (cache_dir/'metadata.csv').open(encoding='utf-8',newline='') as stream:
-        records = [r for r in csv.DictReader(stream) if cache_path(cache_dir,r['id']).exists()]
+        records = [r for r in csv.DictReader(stream) if valid_cache(cache_path(cache_dir,r['id']),Path(r['path']))]
     records = records[:limit] if limit is not None else records
     if not pilot and len(records) < 5000:
         raise ValueError('La colección final requiere al menos 5000 pistas extraídas.')
+    if not records:
+        raise ValueError('No hay pistas válidas para preparar.')
+    if 'pistas' in db.catalog or 'segmentos' in db.catalog:
+        from .audio.service import AudioService
+        if ('pistas' not in db.catalog or 'segmentos' not in db.catalog
+                or not AudioService(db).ready()
+                or db.tables['pistas'].record_count!=len(records)
+                or db.catalog['pistas'].get('multimodal',{}).get('codebook')!=codebook_path.name):
+            raise ValueError('La colección de audio está incompleta o corresponde a otra preparación. Conservar sus archivos y preparar una carpeta nueva.')
+        return
     codebook = AudioCodebook.load(codebook_path)
     db.create_table('pistas',[column('id',primary=True),column('titulo','CHAR',512),column('artista','CHAR',256),
                             column('genero','CHAR',48),column('particion','CHAR',16),column('duracion','FLOAT'),
                             column('embedding_ptr'),column('secuencia_ptr'),column('licencia','CHAR',256)])
     db.create_table('segmentos',[column('id',primary=True),column('pista_id'),column('inicio','FLOAT'),column('embedding_ptr')])
-    blobs = BlobStore(db.directory/'pistas.blob',db.counter)
-    segment_blobs = BlobStore(db.directory/'segmentos.blob',db.counter)
-    vectors = VectorStore(db.directory/'pistas.vec',counter=db.counter,create=True)
-    segment_vectors = VectorStore(db.directory/'segmentos.vec',counter=db.counter,create=True)
+    blobs = BlobStore(db.directory/'pistas.blob',db.counter,db.page_size)
+    segment_blobs = BlobStore(db.directory/'segmentos.blob',db.counter,db.page_size)
+    vectors = VectorStore(db.directory/'pistas.vec',counter=db.counter,page_size=db.page_size,create=True)
+    segment_vectors = VectorStore(db.directory/'segmentos.vec',counter=db.counter,page_size=db.page_size,create=True)
     counts, segment_id = [], 0
     try:
         for number, record in enumerate(records,1):
@@ -127,7 +155,7 @@ def prepare_audio(db, cache_dir, limit=None, pilot=False):
         db.create_multimodal_index(table,f'idx_{table}_ivf','embedding','IVF')
     db.create_index('pistas','idx_pistas_genero','genero','HASH')
     db.create_index('segmentos','idx_segmentos_pista','pista_id','HASH')
-    boaw = InvertedIndex(db.directory/'pistas_boaw',counter=db.counter,create=True)
+    boaw = InvertedIndex(db.directory/'pistas_boaw',counter=db.counter,page_size=db.page_size,create=True)
     boaw.build_tokens(counts)
     boaw.close()
     print(f'pistas: {len(records):,}; segmentos: {segment_id:,}; BoAW e IVF construidos.',flush=True)

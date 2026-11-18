@@ -26,5 +26,8 @@
   "io": "Propio y scan: DiskCounter, páginas4096, cada transferencia solicitada. PostgreSQL: BUFFERS shared_read y shared_hit separados, bloques8192; hits no son lecturas de dispositivo. No se vacía caché de SO/PG. enable_seqscan=off para estudiar GIN explícitamente.",
   "single_term": "Para una palabra, AND, OR y AND-NOT se reducen al mismo término, sin operando derecho.",
   "pg_version": "PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit",
-  "full_requirement_satisfied": true
+  "full_requirement_satisfied": true,
+  "measurement_script_sha256": "26c9eb6dd28e78c764a248580bf71e6788d3b7c903e8365309f3f5137d59f1b9",
+  "cli_default_update": "Después de medir se cambió únicamente la resolución de rutas predeterminadas: backend.config carga .env. Algoritmos y mediciones sin cambios.",
+  "current_script_sha256": "6ff9bf74b598f63bf5779b3c09b390459ae53624e308d67f83886411780eff6a"
 }

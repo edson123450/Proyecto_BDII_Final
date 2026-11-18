@@ -21,7 +21,12 @@ class AudioService:
         self.boaw = None
 
     def ready(self):
-        return 'pistas' in self.db.tables and (self.db.directory/'pistas_boaw/vocab.dic').exists()
+        if not all(name in self.db.tables and name in self.db.resources for name in ('pistas','segmentos')):
+            return False
+        if not all((self.db.directory/'pistas_boaw'/name).is_file() for name in ('vocab.dic','postings.inv','norms.bin')):
+            return False
+        return (all('vectors' in self.db.resources[name] and 'blobs' in self.db.resources[name] for name in ('pistas','segmentos'))
+                and self.db._index('segmentos','IVF')[0] is not None)
 
     def _load(self):
         if not self.ready():
@@ -81,6 +86,10 @@ class AudioService:
 
     def search(self,waveform,sample_rate,k=5,probes=5,include_dtw=True):
         """Esta función compara las representaciones sin usar ANN para excluir pistas de DTW."""
+        if isinstance(k,bool) or not isinstance(k,int) or k<1 or isinstance(probes,bool) or not isinstance(probes,int) or probes<1:
+            raise ValueError('k y probes deben ser enteros positivos.')
+        if not isinstance(sample_rate,(int,float)) or not np.isfinite(sample_rate) or sample_rate<=0:
+            raise ValueError('La frecuencia de muestreo debe ser positiva y finita.')
         self._load()
         features=self.extractor.extract_waveform(waveform,sample_rate)
         started=perf_counter()
