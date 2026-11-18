@@ -1,0 +1,4 @@
+method,elapsed_ms,disk_reads,disk_writes,index_reads,data_reads,stored_bytes,clusters
+deep_exact,11424.805875,0,12789,0,0,26193920,
+boaw_tfidf,1425.393542,0,2322,0,0,9498624,
+deep_ivf,4387.155584,19103,12790,6315,12788,26521600,79

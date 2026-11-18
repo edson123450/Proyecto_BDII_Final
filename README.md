@@ -96,7 +96,9 @@ Los índices no usan FAISS, Rtree, PostgreSQL ni otro motor como almacenamiento 
 
 ## Representación acústica y alcance
 
-FMA Small contiene 8000 pistas de 30 segundos y ocho géneros: Electronic, Experimental, Folk, Hip-Hop, Instrumental, International, Pop y Rock. Se conservan las divisiones oficiales de entrenamiento, validación y prueba. Los errores de decodificación, si los hubiera, se registran explícitamente durante la preparación.
+FMA Small contiene 8000 pistas de aproximadamente 30 segundos y ocho géneros: Electronic, Experimental, Folk, Hip-Hop, Instrumental, International, Pop y Rock. Se conservan las divisiones oficiales de entrenamiento, validación y prueba. Los errores de decodificación se registran explícitamente durante la preparación.
+
+En la preparación incluida se revisaron los 8000 archivos de la copia local: **7994 fueron utilizables** (6394 de entrenamiento, 800 de validación y 800 de prueba). Los IDs 98565, 98567, 98569, 99134, 108925 y 133297 no pudieron decodificarse; sus originales se conservaron y no se sustituyeron. La aplicación utiliza las pistas válidas y los experimentos mantienen las consultas de prueba predefinidas.
 
 **BoAW:** MFCC20 por ventanas, normalización y vocabulario de 256 palabras acústicas ajustados solo con pistas de entrenamiento. Los histogramas se consultan mediante el mismo índice invertido con TF-IDF/coseno.
 
