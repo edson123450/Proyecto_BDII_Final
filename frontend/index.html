@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SonoraDB · Consola</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/"
+        >◒ <strong>Sonora<span>DB</span></strong></a
+      ><span class="subtitle">BASE DE DATOS II · MOTOR EN DISCO</span>
+      <div class="connection">
+        <span class="dot"></span><span id="connection">Conectando…</span>
+      </div>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">EXPLORAR · CONSULTAR · MEDIR</p>
+          <h1>Los datos, desde adentro.</h1>
+          <p>
+            Ejecutar SQL y observar cómo trabaja el motor sobre sus páginas.
+          </p>
+        </div>
+        <button class="secondary" id="show-benchmarks">
+          Ver experimentos ↗
+        </button>
+      </div>
+      <div class="workspace">
+        <aside class="panel explorer">
+          <div class="panel-title">
+            <h2>01 <span>Tablas e índices</span></h2>
+            <button class="icon" id="refresh" aria-label="Actualizar tablas">
+              ↻
+            </button>
+          </div>
+          <div id="tables" class="table-list"></div>
+          <div class="explorer-note">
+            Páginas de <strong>4 KB</strong><br />Heap · Sequential · B+ · Hash
+            extendible
+          </div>
+        </aside>
+        <section class="center">
+          <div class="panel query-panel">
+            <div class="panel-title">
+              <h2>02 <span>Editor SQL</span></h2>
+              <label class="example-label"
+                >Ejemplo
+                <select id="examples">
+                  <option value="range">Búsqueda por rango</option>
+                  <option value="equal">Búsqueda puntual</option>
+                  <option value="hash">Igualdad con hash</option>
+                  <option value="scan">Escaneo secuencial</option>
+                  <option value="create">Crear tabla</option>
+                  <option value="insert">Insertar registro</option>
+                </select></label
+              >
+            </div>
+            <div class="editor-wrap">
+              <pre id="highlight" aria-hidden="true"></pre>
+              <textarea id="sql" spellcheck="false" aria-label="Consulta SQL">
+SELECT id, nombre, dept, salario
+FROM empleados
+WHERE id &gt;= 100 AND id &lt;= 150;</textarea
+              >
+            </div>
+            <div class="editor-footer">
+              <span>⌘ / Ctrl + Enter para ejecutar</span
+              ><button class="primary" id="execute">
+                ▶ Ejecutar consulta
+              </button>
+            </div>
+          </div>
+          <div class="panel results-panel">
+            <div class="panel-title">
+              <h2>03 <span>Resultados</span></h2>
+              <span id="result-count" class="badge">Sin consulta</span>
+            </div>
+            <div id="message" role="status" class="status-message">
+              La consulta mostrará aquí los registros recuperados.
+            </div>
+            <div id="results" class="results">
+              <div class="empty">
+                <span>⌕</span>
+                <p>Una consulta, un recorrido por el disco.</p>
+                <small>Seleccionar un ejemplo y ejecutar para comenzar.</small>
+              </div>
+            </div>
+            <div class="pagination">
+              <button class="secondary" id="previous" disabled>
+                ← Anterior</button
+              ><span id="page-label">Página 1</span
+              ><button class="secondary" id="next" disabled>Siguiente →</button>
+            </div>
+          </div>
+        </section>
+        <aside class="panel metrics-panel">
+          <div class="panel-title">
+            <h2>04 <span>Plan y métricas</span></h2>
+          </div>
+          <div class="plan-block">
+            <span class="eyebrow">RUTA DE ACCESO</span>
+            <h3 id="plan-name">—</h3>
+            <p id="plan-reason">
+              El planificador elige según el filtro y los índices disponibles.
+            </p>
+            <code id="plan-index"></code>
+          </div>
+          <div class="metric">
+            <span>Lecturas de disco</span><strong id="reads">—</strong>
+            <div class="bar"><i id="read-bar"></i></div>
+          </div>
+          <div class="metric">
+            <span>Escrituras de disco</span><strong id="writes">—</strong>
+            <div class="bar writes"><i id="write-bar"></i></div>
+          </div>
+          <div class="time-grid">
+            <div><span>Ejecución</span><strong id="execution">—</strong></div>
+            <div><span>Parseo</span><strong id="parse">—</strong></div>
+          </div>
+          <div id="io-detail" class="io-detail"></div>
+          <p class="metric-note">
+            I/O: páginas transferidas por el gestor mediante lectura o
+            escritura. El sistema operativo puede mantenerlas en su caché.
+          </p>
+        </aside>
+      </div>
+      <section id="benchmark-panel" class="panel benchmark-panel" hidden>
+        <div class="panel-title">
+          <h2>Experimentos <span>Resultados medidos</span></h2>
+          <button
+            class="icon"
+            id="close-benchmarks"
+            aria-label="Cerrar experimentos"
+          >
+            ×
+          </button>
+        </div>
+        <div id="benchmark-images"></div>
+      </section>
+    </main>
+    <footer>
+      SonoraDB
+      <span
+        >Almacenamiento propio · Índices persistentes · Mediciones reales</span
+      >
+    </footer>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+method,n,page_size,queries,disk_reads_mean,disk_reads_stdev,disk_reads_min,disk_reads_max,disk_writes_mean,disk_writes_stdev,disk_writes_min,disk_writes_max,index_reads_mean,index_reads_stdev,index_reads_min,index_reads_max,data_reads_mean,data_reads_stdev,data_reads_min,data_reads_max,latency_ms_mean,latency_ms_stdev,latency_ms_min,latency_ms_max,result_count_mean,result_count_stdev,result_count_min,result_count_max
+btree,100000,4096,1000,4.008,0.08912880535463237,4,5,0.0,0.0,0,0,3.008,0.08912880535463237,3,4,1.0,0.0,1,1,0.135338965,0.09657549183531507,0.074,0.973167,1.0,0.0,1,1
+hash,100000,4096,1000,3.0,0.0,3,3,0.0,0.0,0,0,2.0,0.0,2,2,1.0,0.0,1,1,0.07410388799999999,0.07767099123490616,0.039833,1.862791,1.0,0.0,1,1
+heap,100000,4096,1000,1640.0,0.0,1640,1640,0.0,0.0,0,0,0.0,0.0,0,0,1640.0,0.0,1640,1640,44.001504335,10.303022005496096,39.60225,316.090584,1.0,0.0,1,1
+sequential,100000,4096,1000,12.175,0.39054772759232326,12,14,0.0,0.0,0,0,0.0,0.0,0,0,12.175,0.39054772759232326,12,14,0.16874522099999997,0.15170895960137454,0.083708,1.248167,1.0,0.0,1,1

@@ -1,0 +1,100 @@
+{
+  "started_at": "2026-11-18T06:28:14.122971+00:00",
+  "updated_at": "2026-11-18T06:39:34.635423+00:00",
+  "fingerprint": "45e5e3e4f6741fdc1b4f",
+  "config": {
+    "format_version": 1,
+    "scale": "full",
+    "seed": 20261118,
+    "insert_ns": [
+      1000,
+      10000,
+      50000,
+      100000,
+      250000,
+      500000
+    ],
+    "query_n": 100000,
+    "point_queries": 1000,
+    "range_queries": 20,
+    "sensitivity_n": 100000,
+    "page_size": 4096,
+    "page_sizes": [
+      1024,
+      2048,
+      4096,
+      8192
+    ],
+    "selectivities": [
+      0.001,
+      0.01,
+      0.05,
+      0.1,
+      0.25
+    ],
+    "schema": [
+      {
+        "name": "id",
+        "type": "INT",
+        "primary": true
+      },
+      {
+        "name": "nombre",
+        "type": "CHAR",
+        "size": 30
+      },
+      {
+        "name": "dept",
+        "type": "CHAR",
+        "size": 20
+      },
+      {
+        "name": "salario",
+        "type": "FLOAT"
+      }
+    ],
+    "fill_factor": 0.75,
+    "query_checkpoint_size": 50
+  },
+  "source_hashes": {
+    "benchmarks/parte1.py": "55fa3c0d72dc3fa24b5c800bfc06e65f649b9ef9f55c09f9ba7ff1ff0f5170b4",
+    "backend/minidb/storage.py": "8b7eed7e91878617713ea37b26d2dfeaec5a2766fbfa97e7d51f32e78ef29c54",
+    "backend/minidb/indexes.py": "f16dac72160b8b02d0ab5161e3eaaa24c1c53e595e0abd7497bc83085d9b1246",
+    "backend/minidb/io.py": "686435e1e454fe1954d0b6f65a28f0474669ac9b72ecf2131a6222e745646721"
+  },
+  "environment": {
+    "python": "3.13.7 (main, Aug 14 2025, 11:12:11) [Clang 17.0.0 (clang-1700.3.19.1)]",
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "machine": "arm64"
+  },
+  "methodology": {
+    "dataset": "Registros sintéticos deterministas, claves únicas 1..N, orden barajado con semilla fija; esquema id INT, nombre CHAR(30), dept CHAR(20), salario FLOAT.",
+    "experiment1": "Series acumuladas desde cero sobre el mismo orden de 500000 claves (2000 en smoke). Cada punto N es el prefijo de la serie. Sequential con reorganización ejecuta reorganize(0.75) al alcanzar cada N; su coste está incluido. Heap y Sequential almacenan tuplas completas; B+ y Hash miden sólo pares clave/RID. Los RIDs de E1 son referencias sintéticas de formato válido; E2/E3 usan RIDs reales del Heap.",
+    "experiment2": "1000 igualdades aleatorias con reemplazo y todas presentes (30 en smoke). Misma secuencia para cada método. Full scan agota las páginas. Sequential usa área principal ordenada preparada con bulk_load. Índices incluyen búsqueda y lectura de la tupla en Heap.",
+    "experiment3": "Rangos inclusivos de anchura exactamente round(N*selectividad), mismos límites por método. Todas las tuplas se materializan; B+ incluye accesos al Heap aleatoriamente organizado, sin agrupación ni deduplicación de páginas por el benchmark.",
+    "experiment4": "100000 claves (2000 en smoke), idéntico orden aleatorio por tamaño de página. Se mide sólo el índice; fanout es la capacidad máxima de hijos, altura y páginas se obtienen de la estructura real. Incluye igualdad y rangos del 1%.",
+    "io": "Contador de transferencias de bloques del gestor: cada read/write físico solicitado por la implementación, no fallos de caché del dispositivo. No se vacía la caché del SO. Creación de archivos incluida en inserción; reapertura de checkpoints y fixture de consultas excluidas. Diagnóstico stats() excluido de consultas.",
+    "timing": "Reloj monotónico perf_counter_ns, milisegundos. Validación de resultados, exportación, copia de checkpoints y gráficos fuera de los intervalos medidos. Desviación estándar muestral (ddof=1). Una serie de inserción; consultas repetidas para distribuciones de latencia.",
+    "checkpoint": "Checkpoints JSON atómicos por versión de código y configuración. E1 preserva estado binario confirmado y copia antes del siguiente segmento; no se extrapolan observaciones."
+  },
+  "expected_observations": {
+    "experiment1": 30,
+    "experiment2": 4000,
+    "experiment3": 300,
+    "experiment4": 4
+  },
+  "actual_observations": {
+    "experiment1": 30,
+    "experiment2": 4000,
+    "experiment3": 300,
+    "experiment4": 4
+  },
+  "experiments_complete": {
+    "experiment1": true,
+    "experiment2": true,
+    "experiment3": true,
+    "experiment4": true
+  },
+  "full_requirement_satisfied": true
+}
