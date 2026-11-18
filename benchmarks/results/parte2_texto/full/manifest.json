@@ -1,0 +1,30 @@
+{
+  "complete": true,
+  "n": 20000,
+  "sizes": [
+    1000,
+    5000,
+    10000,
+    20000
+  ],
+  "repeats": 5,
+  "queries": [
+    "collectiv",
+    "hip",
+    "hop",
+    "lif",
+    "way"
+  ],
+  "observations": 180,
+  "preprocessing_ms": 33262.92704092339,
+  "source": "FMA metadata tracks.csv; títulos, artista, álbum, género, biografía, información y tags; HTML eliminado",
+  "normalization": "NFKD, casefold, stopwords ES/EN; Snowball español seguido de inglés, idéntico por token al indexar y consultar",
+  "construction": "Preprocesamiento común excluido. Propio construye vocab.dic+postings.inv+norms.bin con build_tokens; tamaño principal dic+inv, normas aparte. GIN se construye sobre to_tsvector(simple, token_text) de los mismos tokens ya normalizados; carga de tabla excluida.",
+  "full_scan": "Corpus binario paginado 4096 bytes, original UTF8 + frecuencias + pesos TF-IDF; cada consulta recorre todas las páginas y decodifica cada vector documental. Sin postings ni corpus RAM. Preprocesamiento/normas fuera del tiempo de consulta, igual que ambos índices.",
+  "cosine": "(1+log10(tf))*log10(N/df), normas L2 documento y consulta, top10. PostgreSQL usa los mismos pesos JSONB y norma; GIN genera candidatos. No se usa ts_rank.",
+  "timing": "Propio/fullscan: perf_counter tiempo cliente. PostgreSQL latency_ms mide SELECT+fetch/roundtrip. EXPLAIN ANALYZE BUFFERS se ejecuta después, fuera del intervalo, sobre la misma consulta; pg_execution_ms corresponde a esa ejecución instrumentada. Validación fuera del cronómetro.",
+  "io": "Propio y scan: DiskCounter, páginas4096, cada transferencia solicitada. PostgreSQL: BUFFERS shared_read y shared_hit separados, bloques8192; hits no son lecturas de dispositivo. No se vacía caché de SO/PG. enable_seqscan=off para estudiar GIN explícitamente.",
+  "single_term": "Para una palabra, AND, OR y AND-NOT se reducen al mismo término, sin operando derecho.",
+  "pg_version": "PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit",
+  "full_requirement_satisfied": true
+}

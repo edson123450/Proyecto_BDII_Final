@@ -1,0 +1,40 @@
+The MIT License
+  
+Copyright (c) 2018-2020 Qiuqiang Kong
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+Attribution for the separately downloaded pretrained checkpoint
+---------------------------------------------------------------
+The code adaptation in backend/audio/model.py is covered by the MIT notice above.
+The pretrained Cnn6_mAP=0.343.pth checkpoint is distributed separately through
+Zenodo under Creative Commons Attribution 4.0 International (CC BY 4.0),
+as declared in https://zenodo.org/api/records/3987831.
+
+Creators: Qiuqiang Kong, Yin Cao, Turab Iqbal, Yuxuan Wang, Wenwu Wang,
+and Mark D. Plumbley.
+Title: PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern
+Recognition (Pretrained Models), version v3.
+Source: https://doi.org/10.5281/zenodo.3987831
+License: https://creativecommons.org/licenses/by/4.0/
+Checkpoint MD5: e25e26b84585b14c7754c91e48efc9be
+
+The downloaded weights are not modified or committed to this repository.
+The code adaptation removes training-only augmentation/dropout operations
+for evaluation and returns the pretrained 512-dimensional embedding.

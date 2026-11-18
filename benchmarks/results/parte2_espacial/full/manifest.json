@@ -1,0 +1,61 @@
+{
+  "config": {
+    "scale": "full",
+    "seed": 20261118,
+    "page_size": 4096,
+    "spatial_ns": [
+      10000,
+      50000,
+      100000
+    ],
+    "dimensions": [
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128
+    ],
+    "dimensionality_n": 2000,
+    "query_count": 5,
+    "ks": [
+      5,
+      20,
+      50
+    ],
+    "radii_km": [
+      0.25,
+      1.0,
+      3.0
+    ],
+    "dimension_k": 20
+  },
+  "fingerprint": "e0b078f54cf09c0e8044",
+  "source_hashes": {
+    "benchmarks/parte2_espacial.py": "9311b72402da8cea27e6f004cb0f86ac643251e69a84d92c368f412f82b03cc4",
+    "backend/minidb/spatial.py": "1de4c78a051dfcc82ced9b2c96b2354b306760716a4edaadefb257d113345d4a",
+    "backend/minidb/io.py": "686435e1e454fe1954d0b6f65a28f0474669ac9b72ecf2131a6222e745646721"
+  },
+  "started_at": "2026-11-18T06:56:00.542034+00:00",
+  "updated_at": "2026-11-18T06:56:27.966576+00:00",
+  "units_complete": 10,
+  "units_expected": 10,
+  "full_requirement_satisfied": true,
+  "all_results_equal_to_paginated_exact_scan": true,
+  "environment": {
+    "python": "3.13.7 (main, Aug 14 2025, 11:12:11) [Clang 17.0.0 (clang-1700.3.19.1)]",
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.5"
+  },
+  "methodology": {
+    "spatial_dataset": "Puntos sintéticos uniformes en región local de 50x40 km, coordenadas float32, semilla fija. Los N comparten el mismo prefijo. Escala comparable a un área metropolitana; no son ubicaciones reales de negocios.",
+    "dimension_dataset": "Vectores sintéticos uniformes [0,1]^D; N fijo=2000 full (100 smoke), dimensiones 2..128, k=20. Se aísla D del crecimiento de N. El menor fanout por entrada más ancha y el solapamiento contribuyen conjuntamente a la degradación.",
+    "memory": "Construcción genera bloques de 4096 puntos. No se conserva el dataset en RAM para consultar. PointStore lee páginas completas una por vez, calcula distancias exactas y mantiene Top-K en max-heap. RTree consulta nodos en disco, sin caché persistente.",
+    "queries": "Cinco centros independientes por configuración full (dos smoke), idénticos entre métodos; orden de métodos alternado. Coordenadas y centros float32, distancias Euclídeas calculadas float64. Resultados completos comparados fuera de la medición, con desempate por RID.",
+    "timing": "Latencias calientes: datos recién escritos al SO y una consulta de calentamiento por método. No se vacía caché SO. perf_counter_ns; media y desviación muestral. La ejecución full se realiza con la extracción de audio en pausa, coordinada antes de medir.",
+    "io": "Transferencias paginadas solicitadas al gestor, desglosadas índice/datos. Consultas RTree incluyen coordenadas en hojas y devuelven RID/distancia; no incluyen materialización de otras columnas del Heap. El baseline contiene exactamente puntos/RIDs.",
+    "pages": "Páginas físicas 4096B, cabecera32B, entradaRTree 8D+8 bytes (MBRfloat32+RID/child). Capacity D128=3; no se utiliza una librería de índice espacial.",
+    "correctness": "Cada respuesta RTree debe coincidir con baseline paginado antes de escribir el checkpoint. No se ajustan ni extrapolan métricas para producir un cruce esperado."
+  }
+}

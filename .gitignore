@@ -10,6 +10,7 @@ data/fma_small/
 data/fma_metadata/
 benchmarks/work/
 benchmarks/results/smoke/
+benchmarks/results/**/smoke/
 benchmarks/results/**/checkpoints/
 *.log
 *.pdf
