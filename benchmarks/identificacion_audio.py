@@ -84,9 +84,12 @@ def relative_audio_path(path, audio_root=AUDIO_DIR):
 
 
 def make_plan(metadata, allowed_ids=None, audio_root=AUDIO_DIR):
-    candidates = [row for row in metadata if allowed_ids is None or row["id"] in allowed_ids]
     genres = sorted({row["genre"] for row in metadata})
-    tracks = select_stratified_test(candidates, 1, seed=20261118, required_genres=genres)
+    tracks = select_stratified_test(metadata, 1, seed=20261118, required_genres=genres)
+    if allowed_ids is not None:
+        unavailable = [row["id"] for row in tracks if row["id"] not in allowed_ids]
+        if unavailable:
+            raise ValueError(f"El plan predefinido incluye pistas no disponibles: {unavailable}")
     return [{"track_id": row["id"], "genre": row["genre"], "split": row["split"],
              "audio_path": relative_audio_path(row["path"], audio_root),
              "variant": variant["name"], "start_seconds": variant["start_seconds"],

@@ -7,7 +7,7 @@ import numpy as np
 
 from benchmarks.parte2_audio import (assert_no_split_leakage, precision_at,
                                      probe_counts, read_timings, recall_at, select_stratified_test)
-from benchmarks.identificacion_audio import crop_audio, identification_score, noise_at_snr, relative_audio_path
+from benchmarks.identificacion_audio import crop_audio, identification_score, make_plan, noise_at_snr, relative_audio_path
 
 
 class AudioBenchmarkContractTests(unittest.TestCase):
@@ -91,6 +91,16 @@ class AudioBenchmarkContractTests(unittest.TestCase):
             self.assertEqual(relative_audio_path(root / "139/139933.mp3", root), "139/139933.mp3")
             with self.assertRaises(ValueError):
                 relative_audio_path(Path(directory) / "outside.mp3", root)
+
+    def test_identification_plan_is_not_resampled_after_corpus_exclusions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = [{**row, "path": str(root / f"{row['id']:06d}.mp3")} for row in self.records()]
+            plan = make_plan(records, audio_root=root)
+            selected = {query["track_id"] for query in plan}
+            self.assertEqual(make_plan(records, selected, root), plan)
+            with self.assertRaises(ValueError):
+                make_plan(records, {row["id"] for row in records} - {plan[0]["track_id"]}, root)
 
     def test_identification_crop_and_failures_are_not_concealed(self):
         audio = np.arange(3000, dtype=np.float32)

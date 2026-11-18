@@ -196,7 +196,12 @@ class AudioBenchmark:
         if scale == "smoke":
             self.gallery = self.gallery[:256]
         required = sorted({row["genre"] for row in self.metadata}) if scale == "full" else None
-        self.queries = select_stratified_test(self.valid, self.per_genre, required_genres=required)
+        sampling_pool = self.metadata if scale == "full" else self.valid
+        self.queries = select_stratified_test(sampling_pool, self.per_genre, required_genres=required)
+        available_ids = {row["id"] for row in self.valid}
+        unavailable_queries = [row["id"] for row in self.queries if row["id"] not in available_ids]
+        if unavailable_queries:
+            raise ValueError(f"El plan semántico predefinido incluye pistas no disponibles: {unavailable_queries}")
         assert_no_split_leakage(self.metadata, self.gallery, self.queries, self.codebook.training_ids, full=scale == "full")
         if len(self.gallery) < 10:
             raise ValueError("Se necesitan al menos diez pistas training para Precision@10")
@@ -458,7 +463,7 @@ class AudioBenchmark:
                     "methodology": {
                         "splits": "Galería formada únicamente por training; consultas estratificadas únicamente de test; validation no se usa para ajustar ni consultar. Codebook declara solo IDs training. DF, IDF y normas BoAW se recalculan sobre la galería; centroides IVF se aprenden únicamente de sus vectores.",
                         "semantic_relevance": "Relevancia aproximada por coincidencia de género musical FMA, evaluada con Precision@5 y Precision@10. Esta métrica mide recuperación semántica por género; no demuestra identificación de una grabación ni atribución de derechos de autor.",
-                        "query_sampling": "Muestreo determinista equilibrado por género, cuatro consultas por cada uno de los ocho géneros en full por defecto. Promedio global equivale a macro-promedio por género. Los vecinos faltantes cuentan como no relevantes.",
+                        "query_sampling": "Muestreo determinista equilibrado por género, cuatro consultas por cada uno de los ocho géneros en full por defecto. Full selecciona primero sobre los metadatos completos y comprueba después disponibilidad; las exclusiones del corpus no remuestrean las consultas. Una consulta no utilizable detiene la ejecución y requiere documentar cualquier sustitución. Promedio global equivale a macro-promedio por género. Los vecinos faltantes cuentan como no relevantes.",
                         "representations": "BoAW: MFCC20 sin c0 + normalización aprendida en training + codebook K-Means + histograma TFIDF + coseno en índice invertido propio. Deep: embeddings PANNs CNN6 preentrenado en AudioSet, 512D, promedio normalizado de segmentos de 10s; búsqueda exacta de coseno paginada.",
                         "extraction": "Consultas semánticas de pista completa (hasta 30 s), idéntico audio en ambos métodos. Tiempos reales por pista del último registro exitoso manifest.jsonl: MFCC y embedding se midieron en la misma corrida y se muestran separados. Proceden de preparación con actividad concurrente de pruebas/interfaz y carga térmica variable, no de microbenchmarks aislados; excluyen descarga y carga inicial del modelo. La traza conserva run_id, dispositivo, threads y batch cuando están disponibles; los primeros registros piloto usaron CPU, dos threads y batch2. Cuantización BoAW se mide nuevamente sobre descriptores reales. Decodificación se informa aparte. Lectura NPZ e inferencia se excluyen de latencia de consulta; no se presenta una suma de fases como medición end-to-end. Las consultas recortadas pertenecen a la evaluación independiente de identificación.",
                         "ivf": "IVF propio paginado entrenado solo en galería; C=floor(sqrt(N)). Probes 1,2,5,10,20,50 y C; valores mayores que C se deduplican en smoke. Recall@10 se calcula contra VectorStore exacto con idénticos vectores normalizados. Con C probes se exige igualdad de IDs y distancias.",
