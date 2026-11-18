@@ -1,0 +1,301 @@
+{
+  "config": {
+    "probes": 5,
+    "k": 5,
+    "corpus_tracks": 7994,
+    "corpus_segments": 39970,
+    "codebook_sha256": "ccf20a697d73809096885147e8665a38011dea214df3f6b8bf9f428bf2e9cce9",
+    "catalog_sha256": "3f61188d675076c03599ff30fad5777c0a004a4bf74a7254f629776f12c43035",
+    "plan": [
+      {
+        "track_id": 139933,
+        "genre": "Electronic",
+        "split": "test",
+        "audio_path": "139/139933.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 139933,
+        "genre": "Electronic",
+        "split": "test",
+        "audio_path": "139/139933.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 139933,
+        "genre": "Electronic",
+        "split": "test",
+        "audio_path": "139/139933.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 18112,
+        "genre": "Experimental",
+        "split": "test",
+        "audio_path": "018/018112.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 18112,
+        "genre": "Experimental",
+        "split": "test",
+        "audio_path": "018/018112.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 18112,
+        "genre": "Experimental",
+        "split": "test",
+        "audio_path": "018/018112.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12059,
+        "genre": "Folk",
+        "split": "test",
+        "audio_path": "012/012059.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12059,
+        "genre": "Folk",
+        "split": "test",
+        "audio_path": "012/012059.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12059,
+        "genre": "Folk",
+        "split": "test",
+        "audio_path": "012/012059.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86416,
+        "genre": "Hip-Hop",
+        "split": "test",
+        "audio_path": "086/086416.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86416,
+        "genre": "Hip-Hop",
+        "split": "test",
+        "audio_path": "086/086416.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86416,
+        "genre": "Hip-Hop",
+        "split": "test",
+        "audio_path": "086/086416.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86039,
+        "genre": "Instrumental",
+        "split": "test",
+        "audio_path": "086/086039.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86039,
+        "genre": "Instrumental",
+        "split": "test",
+        "audio_path": "086/086039.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 86039,
+        "genre": "Instrumental",
+        "split": "test",
+        "audio_path": "086/086039.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 142537,
+        "genre": "International",
+        "split": "test",
+        "audio_path": "142/142537.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 142537,
+        "genre": "International",
+        "split": "test",
+        "audio_path": "142/142537.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 142537,
+        "genre": "International",
+        "split": "test",
+        "audio_path": "142/142537.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12387,
+        "genre": "Pop",
+        "split": "test",
+        "audio_path": "012/012387.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12387,
+        "genre": "Pop",
+        "split": "test",
+        "audio_path": "012/012387.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 12387,
+        "genre": "Pop",
+        "split": "test",
+        "audio_path": "012/012387.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 33992,
+        "genre": "Rock",
+        "split": "test",
+        "audio_path": "033/033992.mp3",
+        "variant": "crop_5s",
+        "start_seconds": 7.2,
+        "duration_seconds": 5.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 33992,
+        "genre": "Rock",
+        "split": "test",
+        "audio_path": "033/033992.mp3",
+        "variant": "crop_10s",
+        "start_seconds": 2.0,
+        "duration_seconds": 10.0,
+        "snr_db": null,
+        "noise_seed": 42
+      },
+      {
+        "track_id": 33992,
+        "genre": "Rock",
+        "split": "test",
+        "audio_path": "033/033992.mp3",
+        "variant": "noise_20db_10s",
+        "start_seconds": 7.2,
+        "duration_seconds": 10.0,
+        "snr_db": 20.0,
+        "noise_seed": 42
+      }
+    ]
+  },
+  "fingerprint": "af32fbddb4ac7eaea822",
+  "source_hashes": {
+    "benchmarks/identificacion_audio.py": "2fd688523d507b529002c5405f7ada7d8c6a259b7066e5a1cb358dae610383d3",
+    "backend/audio/service.py": "613e84cca3918754d144ae439f7deec0b9685764a45d522392a60c063d5dbc51",
+    "backend/audio/features.py": "c950480e0b27044b05436b7c9ebe9fb98659c62fa86ed878433e9f84839069a3",
+    "backend/audio/model.py": "2dd8a15c6bbcfcf927ce8df4f67fa4b32aeb22af1ba8be3b5b4c33bb86d7a560",
+    "backend/audio/dtw.py": "a5a1237e1720f0b2b558f01e1bb06fe238711cd832a930580ac37ab169e02fe9",
+    "backend/minidb/vector.py": "1dacbcdf5b4cb0048467c8a2c288fb55a0100224e13f0db57ecbac1ad9239c83",
+    "backend/minidb/text.py": "fb13aca8b3feb18d076d18b49c1cd84080014b72d983772ff3311b5d35237acb",
+    "backend/minidb/multimodal.py": "aea85344a5b36bc6133fa1d797e32972bbcc6759c9c8390034396604e66ca608"
+  },
+  "started_at": "2026-11-18T08:55:23.462269+00:00",
+  "updated_at": "2026-11-18T08:56:55.240597+00:00",
+  "queries_completed": 24,
+  "queries_expected": 24,
+  "method_observations": 96,
+  "full_requirement_satisfied": true,
+  "methodology": {
+    "task": "Identificación de grabaciones cuyo original está incluido deliberadamente en el corpus completo. Ocho pistas test, una por género; esto no mide generalización a originales ausentes y es independiente de E7/E8.",
+    "variants": "Recorte5s desde7.2s, recorte10s desde2.0s y recorte10s desde7.2s con ruido gaussiano aditivo a SNR20dB. Semilla42. Inicios desalineados respecto a ventanas de10s con stride5s. Selección fijada antes de observar aciertos.",
+    "corpus": "Corpus FMA Small completo preparado: BoAW sobre pistas, IVF y exacto sobre segmentos persistidos y agrupados por pista. El original permanece en cada método. Se informa Top1/Top5 y también los fallos.",
+    "dtw": "AudioService ejecuta DTW con LB_Keogh sobre todas las pistas; ANN solo siembra el heap. Universo exacto: ventanas MFCC13 de igual duración, inicios cada200ms, banda10% y normalización del codebooktraining. Se conservan tracks, windows, pruned, refined, abandoned y radius por consulta. Evaluar LB requiere leer las secuencias: la poda ahorra matrices DTW/CPU, no esas lecturas del corpus. La garantía no abarca todas las alineaciones continuas posibles.",
+    "timing": "Extracción nueva del mismo fragmento para los cuatro métodos, tiempos de extracción separados. Latencia de cada método incluye recuperación de filas/metadata. service_total_ms mide extracción y las cuatro búsquedas completas, excluyendo decodificación/carga inicial del modelo. Pesos y compilaciónDTW se calientan antes. No se reutilizan tiempos de pistas30s para fragmentos5/10s.",
+    "metrics": "Hit@1 y Hit@5 por identidad, sin imponer éxito. I/O paginado del motor; métricas exactas de los métodos retornadas por AudioService. Checkpoints conservan respuesta completa auditable."
+  }
+}
