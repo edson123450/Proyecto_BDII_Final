@@ -477,7 +477,13 @@ function renderAudioMethod(method) {
   });
   if (!rows.length) list.append(element("div", "empty", "Sin coincidencias para este método."));
   card.append(list);
-  const details = element("details", "method-details"); details.append(element("summary", "", "Ver plan y desglose de I/O"), rolesView(metrics), element("pre", "", JSON.stringify(plan, null, 2))); card.append(details);
+  const details = element("details", "method-details");
+  details.append(element("summary", "", "Ver plan y desglose de I/O"), rolesView(metrics));
+  if (method.details?.windows !== undefined) {
+    const stats = method.details;
+    details.append(element("p", "", `${number(stats.tracks)} pistas · ${number(stats.windows)} ventanas · ${number(stats.pruned)} descartadas por LB_Keogh · ${number(stats.refined)} evaluadas con DTW.`));
+  }
+  details.append(element("pre", "", JSON.stringify(plan, null, 2))); card.append(details);
   return card;
 }
 $("audio-form").addEventListener("submit", async (event) => {
