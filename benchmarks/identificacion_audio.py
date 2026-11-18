@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.audio.features import load_audio
-from backend.config import DATA_DIR, AUDIO_CACHE
+from backend.config import DATA_DIR, AUDIO_CACHE, AUDIO_DIR
 from benchmarks.parte1 import atomic_json, read_json, utc_now, write_csv
 from benchmarks.parte2_audio import read_metadata, select_stratified_test, file_sha256
 
@@ -74,11 +74,21 @@ def identification_score(retrieved, track_id):
             "rank_within_top5": rank, "retrieved_ids": ids}
 
 
-def make_plan(metadata, allowed_ids=None):
+def relative_audio_path(path, audio_root=AUDIO_DIR):
+    """La evidencia pública conserva rutas relativas al dataset, sin rutas personales."""
+    try:
+        relative = Path(path).resolve().relative_to(Path(audio_root).resolve())
+    except ValueError as error:
+        raise ValueError("La pista de identificación debe pertenecer al directorio FMA configurado") from error
+    return relative.as_posix()
+
+
+def make_plan(metadata, allowed_ids=None, audio_root=AUDIO_DIR):
     candidates = [row for row in metadata if allowed_ids is None or row["id"] in allowed_ids]
     genres = sorted({row["genre"] for row in metadata})
     tracks = select_stratified_test(candidates, 1, seed=20261118, required_genres=genres)
-    return [{"track_id": row["id"], "genre": row["genre"], "split": row["split"], "path": row["path"],
+    return [{"track_id": row["id"], "genre": row["genre"], "split": row["split"],
+             "audio_path": relative_audio_path(row["path"], audio_root),
              "variant": variant["name"], "start_seconds": variant["start_seconds"],
              "duration_seconds": variant["duration_seconds"], "snr_db": variant["snr_db"], "noise_seed": 42}
             for row in tracks for variant in VARIANTS]
@@ -153,7 +163,7 @@ class IdentificationBenchmark:
                 continue
             print(f"[{utc_now()}] Identificación {number}/{len(selected)}: {query['track_id']} {query['variant']}", flush=True)
             started = time.perf_counter_ns()
-            original, sample_rate = load_audio(query["path"], max_seconds=30)
+            original, sample_rate = load_audio(AUDIO_DIR / query["audio_path"], max_seconds=30)
             decode_ms = (time.perf_counter_ns() - started) / 1e6
             clip = crop_audio(original, sample_rate, query["start_seconds"], query["duration_seconds"])
             actual_snr = None
@@ -173,6 +183,8 @@ class IdentificationBenchmark:
                              "disk_reads": counts["disk_reads"], "disk_writes": counts["disk_writes"],
                              "index_reads": counts["by_role"]["index"]["disk_reads"],
                              "data_reads": counts["by_role"]["data"]["disk_reads"],
+                             **{f"dtw_{key}": method.get("details", {}).get(key)
+                                for key in ("tracks", "windows", "pruned", "refined", "abandoned", "radius")},
                              "actual_snr_db": actual_snr, "start_seconds": query["start_seconds"],
                              "duration_seconds": query["duration_seconds"]})
             if {row["method"] for row in rows} != {"BoAW", "IVF", "Exacto", "DTW + LB_Keogh"}:
@@ -196,7 +208,7 @@ class IdentificationBenchmark:
                                   "task": "Identificación de grabaciones cuyo original está incluido deliberadamente en el corpus completo. Ocho pistas test, una por género; esto no mide generalización a originales ausentes y es independiente de E7/E8.",
                                   "variants": "Recorte5s desde7.2s, recorte10s desde2.0s y recorte10s desde7.2s con ruido gaussiano aditivo a SNR20dB. Semilla42. Inicios desalineados respecto a ventanas de10s con stride5s. Selección fijada antes de observar aciertos.",
                                   "corpus": "Corpus FMA Small completo preparado: BoAW sobre pistas, IVF y exacto sobre segmentos persistidos y agrupados por pista. El original permanece en cada método. Se informa Top1/Top5 y también los fallos.",
-                                  "dtw": "AudioService ejecuta DTW con LB_Keogh sobre todas las pistas; ANN solo siembra el heap. Universo exacto: ventanas MFCC13 de igual duración, inicios cada200ms, banda10% y normalización del codebooktraining. La garantía no abarca todas las alineaciones continuas posibles.",
+                                  "dtw": "AudioService ejecuta DTW con LB_Keogh sobre todas las pistas; ANN solo siembra el heap. Universo exacto: ventanas MFCC13 de igual duración, inicios cada200ms, banda10% y normalización del codebooktraining. Se conservan tracks, windows, pruned, refined, abandoned y radius por consulta. Evaluar LB requiere leer las secuencias: la poda ahorra matrices DTW/CPU, no esas lecturas del corpus. La garantía no abarca todas las alineaciones continuas posibles.",
                                   "timing": "Extracción nueva del mismo fragmento para los cuatro métodos, tiempos de extracción separados. Latencia de cada método incluye recuperación de filas/metadata. service_total_ms mide extracción y las cuatro búsquedas completas, excluyendo decodificación/carga inicial del modelo. Pesos y compilaciónDTW se calientan antes. No se reutilizan tiempos de pistas30s para fragmentos5/10s.",
                                   "metrics": "Hit@1 y Hit@5 por identidad, sin imponer éxito. I/O paginado del motor; métricas exactas de los métodos retornadas por AudioService. Checkpoints conservan respuesta completa auditable."}},
                   "queries": rows, "summary": summarize(rows), "extraction": extractions}

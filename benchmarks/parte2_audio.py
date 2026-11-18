@@ -38,6 +38,12 @@ from backend.minidb.vector import VectorStore, IVFIndex
 from benchmarks.parte1 import atomic_json, read_json, utc_now, write_csv
 
 
+EXTRACTION_TRACE_FIELDS = frozenset((
+    "id", "status", "mfcc_ms", "embedding_ms", "extraction_ms", "decode_ms", "total_ms",
+    "duration", "frames", "segments", "run_id", "device", "threads", "batch_size", "feature_version",
+))
+
+
 def file_sha256(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -79,6 +85,11 @@ def assert_no_split_leakage(metadata, gallery, queries, codebook_ids, full=False
         raise ValueError("Codebook contiene IDs ajenos a training o carece de procedencia")
     if full and vocabulary_training != gallery_ids:
         raise ValueError("El codebook full debe declarar todos los IDs training válidos de la galería")
+    if full:
+        gallery_artists = {row.get("artist_id") for row in gallery} - {None, "", "0"}
+        query_artists = {row.get("artist_id") for row in queries} - {None, "", "0"}
+        if gallery_artists & query_artists:
+            raise ValueError("Un artista de consulta aparece en la galería de entrenamiento")
 
 
 def precision_at(retrieved_ids, query_genre, labels, k):
@@ -362,9 +373,12 @@ class AudioBenchmark:
                                  "decode_ms": timing.get("decode_ms"), "extraction_source": "manifest.jsonl" if timing else "unavailable",
                                  "extraction_run_id": timing.get("run_id", "pilot_trace" if timing else ""),
                                  "extraction_device": timing.get("device", "cpu (pilot configuration)" if timing else ""),
+                                 "extraction_threads": timing.get("threads", 2 if timing else None),
+                                 "extraction_batch_size": timing.get("batch_size", 2 if timing else None),
                                  "retrieved_ids": ids})
                 self.verify_sources()
-                atomic_json(checkpoint, {"rows": rows, "exact": exact, "extraction_trace": timing})
+                public_trace = {key: value for key, value in timing.items() if key in EXTRACTION_TRACE_FIELDS}
+                atomic_json(checkpoint, {"rows": rows, "exact": exact, "extraction_trace": public_trace})
                 self.export()
         finally:
             inverted.close()
@@ -446,9 +460,9 @@ class AudioBenchmark:
                         "semantic_relevance": "Relevancia aproximada por coincidencia de género musical FMA, evaluada con Precision@5 y Precision@10. Esta métrica mide recuperación semántica por género; no demuestra identificación de una grabación ni atribución de derechos de autor.",
                         "query_sampling": "Muestreo determinista equilibrado por género, cuatro consultas por cada uno de los ocho géneros en full por defecto. Promedio global equivale a macro-promedio por género. Los vecinos faltantes cuentan como no relevantes.",
                         "representations": "BoAW: MFCC20 sin c0 + normalización aprendida en training + codebook K-Means + histograma TFIDF + coseno en índice invertido propio. Deep: embeddings PANNs CNN6 preentrenado en AudioSet, 512D, promedio normalizado de segmentos de 10s; búsqueda exacta de coseno paginada.",
-                        "extraction": "Consultas semánticas de pista completa (hasta 30 s), idéntico audio en ambos métodos. Tiempos reales por pista del último registro exitoso manifest.jsonl: MFCC y embedding de sus ventanas se muestran separados. Cuantización BoAW se mide nuevamente sobre descriptores reales. Decodificación se informa aparte. Lectura NPZ e inferencia se excluyen de latencia de consulta; no se presenta una suma de fases como medición end-to-end. Las consultas recortadas pertenecen a la evaluación independiente de identificación.",
+                        "extraction": "Consultas semánticas de pista completa (hasta 30 s), idéntico audio en ambos métodos. Tiempos reales por pista del último registro exitoso manifest.jsonl: MFCC y embedding se midieron en la misma corrida y se muestran separados. Proceden de preparación con actividad concurrente de pruebas/interfaz y carga térmica variable, no de microbenchmarks aislados; excluyen descarga y carga inicial del modelo. La traza conserva run_id, dispositivo, threads y batch cuando están disponibles; los primeros registros piloto usaron CPU, dos threads y batch2. Cuantización BoAW se mide nuevamente sobre descriptores reales. Decodificación se informa aparte. Lectura NPZ e inferencia se excluyen de latencia de consulta; no se presenta una suma de fases como medición end-to-end. Las consultas recortadas pertenecen a la evaluación independiente de identificación.",
                         "ivf": "IVF propio paginado entrenado solo en galería; C=floor(sqrt(N)). Probes 1,2,5,10,20,50 y C; valores mayores que C se deduplican en smoke. Recall@10 se calcula contra VectorStore exacto con idénticos vectores normalizados. Con C probes se exige igualdad de IDs y distancias.",
-                        "timing": "Consultas con caché de SO caliente y una consulta de calentamiento por índice. Reloj perf_counter_ns; estadísticas muestrales. Una consulta por pista y configuración; variación refleja consultas distintas. Fases de construcción y extracción se registran separadamente.",
+                        "timing": "Consultas con caché de SO caliente y una consulta de calentamiento por índice. En full se ejecutan después de terminar la extracción, sin extracción concurrente. Reloj perf_counter_ns; estadísticas muestrales. Una consulta por pista y configuración; variación refleja consultas distintas. Fases de construcción y extracción se registran separadamente.",
                         "io": "Transferencias reales de páginas de 4096B solicitadas al gestor, con desglose índice/datos. Vector512D ocupa una entrada por página en este diseño. Los resultados son IDs/similitudes; no se materializan títulos ni otros metadatos durante la medición.",
                         "scope": "Smoke usa únicamente pistas reales disponibles del piloto y no satisface los requisitos masivos. Full exige preparación completa de las 8000 pistas originales; archivos no decodificables se excluyen explícitamente, sin sustituirlos por muestras sintéticas.",
                         "checkpoints": "Resultados atómicos por consulta y fingerprint de código, vocabulario, galería y cachés. No se extrapolan ni rellenan resultados faltantes."}}

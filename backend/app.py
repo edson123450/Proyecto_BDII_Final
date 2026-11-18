@@ -171,6 +171,9 @@ def audio_search(file:UploadFile|None=File(default=None),track_id:str=Form(defau
                  probes:int=Form(default=5),include_dtw:bool=Form(default=True)):
     import numpy as np
     import soundfile as sf
+    with database.lock:
+        if not audio_service.ready():
+            raise HTTPException(400,'Completar la preparación de las pistas antes de consultar audio.')
     if not 1<=k<=20 or not 1<=probes<=1000 or not math.isfinite(start) or start<0 or not math.isfinite(duration) or not .5<=duration<=30:
         raise HTTPException(400,'Usar k entre 1–20, probes entre 1–1000 y fragmentos de 0.5–30 segundos.')
     directory=ROOT/'data/cache/queries';directory.mkdir(parents=True,exist_ok=True)

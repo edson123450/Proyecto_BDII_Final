@@ -1,10 +1,13 @@
 import unittest
+import json
+from pathlib import Path
+import tempfile
 
 import numpy as np
 
 from benchmarks.parte2_audio import (assert_no_split_leakage, precision_at,
-                                     probe_counts, recall_at, select_stratified_test)
-from benchmarks.identificacion_audio import crop_audio, identification_score, noise_at_snr
+                                     probe_counts, read_timings, recall_at, select_stratified_test)
+from benchmarks.identificacion_audio import crop_audio, identification_score, noise_at_snr, relative_audio_path
 
 
 class AudioBenchmarkContractTests(unittest.TestCase):
@@ -39,6 +42,10 @@ class AudioBenchmarkContractTests(unittest.TestCase):
             assert_no_split_leakage(records, gallery + [queries[0]], queries, ids)
         with self.assertRaises(ValueError):
             assert_no_split_leakage(records, gallery, queries, ids[:2], full=True)
+        gallery[0]["artist_id"] = "overlapping_artist"
+        queries[0]["artist_id"] = "overlapping_artist"
+        with self.assertRaises(ValueError):
+            assert_no_split_leakage(records, gallery, queries, ids, full=True)
 
     def test_precision_counts_missing_results_as_misses(self):
         labels = {1: "Rock", 2: "Rock", 3: "Folk"}
@@ -57,12 +64,33 @@ class AudioBenchmarkContractTests(unittest.TestCase):
         self.assertEqual(probe_counts(8), [1, 2, 5, 8])
         self.assertEqual(probe_counts(1), [1])
 
+    def test_timing_trace_uses_last_valid_record_per_track(self):
+        records = [
+            {"id": 7, "status": "ok", "mfcc_ms": 12, "embedding_ms": 180, "run_id": "pilot"},
+            {"id": 7, "status": "ok", "mfcc_ms": 10, "embedding_ms": 140, "run_id": "full"},
+            {"id": 7, "status": "error", "run_id": "failed"},
+            {"id": 7, "status": "ok", "feature_version": "obsolete", "run_id": "wrong_version"},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.jsonl"
+            path.write_text("\n".join(json.dumps(row) for row in records) + '\n{"id":', encoding="utf-8")
+            trace = read_timings(path)
+        self.assertEqual(trace[7]["run_id"], "full")
+        self.assertEqual(trace[7]["embedding_ms"], 140)
+
     def test_identification_noise_has_measured_20db_snr(self):
         audio = np.sin(np.arange(16000, dtype=np.float64) * .07).astype(np.float32)
         noisy, measured = noise_at_snr(audio, 20, 42)
         self.assertAlmostEqual(measured, 20, places=5)
         np.testing.assert_array_equal(noisy, noise_at_snr(audio, 20, 42)[0])
         self.assertFalse(np.array_equal(audio, noisy))
+
+    def test_public_audio_path_is_relative_to_configured_dataset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "fma_small"
+            self.assertEqual(relative_audio_path(root / "139/139933.mp3", root), "139/139933.mp3")
+            with self.assertRaises(ValueError):
+                relative_audio_path(Path(directory) / "outside.mp3", root)
 
     def test_identification_crop_and_failures_are_not_concealed(self):
         audio = np.arange(3000, dtype=np.float32)

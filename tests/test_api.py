@@ -8,6 +8,9 @@ def test_web_api_roundtrip(tmp_path, monkeypatch):
         assert client.get('/').status_code == 200
         assert 'Editor SQL' in client.get('/').text
         assert client.get('/api/health').json()['status'] == 'ok'
+        missing_audio = client.post('/api/audio/search', data={'track_id':'2'})
+        assert missing_audio.status_code == 400
+        assert 'preparación' in missing_audio.json()['detail']
         statements = [
             'CREATE TABLE empleados (id INT PRIMARY KEY, nombre CHAR(30)) USING HEAP;',
             "INSERT INTO empleados VALUES (1, 'Joaquín');",
@@ -73,6 +76,7 @@ def test_uploaded_fragment_after_thirty_seconds_and_failure_cleanup(tmp_path,mon
             np.testing.assert_allclose(samples,.2,atol=1e-7)
             return dict(query={'duration':5},methods=[],extraction_ms={},corpus_count=0)
         monkeypatch.setattr(module.audio_service,'search',fake_search)
+        monkeypatch.setattr(module.audio_service,'ready',lambda:True)
         response=client.post('/api/audio/search',data={'start':'35','duration':'5','include_dtw':'false'},files={'file':('long.wav',payload.getvalue(),'audio/wav')})
         assert response.status_code==200,response.text
         assert client.get(response.json()['query']['audio_url']).status_code==200

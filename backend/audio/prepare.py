@@ -201,6 +201,8 @@ def prepare(audio_dir, metadata_dir, output_dir='data/cache/audio', limit=100,
         peak *= 1024
     report = dict(feature_version=FEATURE_VERSION, run_id=run_id, batch_size=batch_size, threads=threads, selected=len(selected), valid=len(successful),
                   failed=failed, resumed=resumed, newly_extracted=len(timing_records),
+                  valid_by_split={split: sum(row['split'] == split for row in successful)
+                                  for split in ('training', 'validation', 'test')},
                   extraction_seconds=extraction_seconds, preparation_seconds=perf_counter() - start,
                   codebook_seconds=perf_counter() - codebook_start if build_codebook else 0,
                   codebook=str(codebook_path) if build_codebook else None,
